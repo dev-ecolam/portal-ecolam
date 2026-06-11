@@ -17,7 +17,7 @@ function Footer() {
               />
             </Link>
             <p className="text-sm opacity-90 leading-relaxed font-medium">
-              Consultoría ambiental y seguridad industrial. Comprometidos con la excelencia normativa y la sostenibilidad de su empresa.
+              Comprometidos con la excelencia normativa y la sostenibilidad de su empresa.
             </p>
           </div>
 
@@ -44,20 +44,20 @@ function Footer() {
             <div className="flex flex-col gap-4">
               <div className="flex items-start gap-3">
                 <Mail className="w-5 h-5 mt-0.5 text-accent" />
-                <a href="mailto:contacto@ecolam.com" className="text-sm text-primary-foreground hover:text-accent transition-colors duration-200 font-medium">
-                  contacto@ecolam.com
+                <a href="mailto:ventas@ecolam.com" className="text-sm text-primary-foreground hover:text-accent transition-colors duration-200 font-medium">
+                  ventas@ecolam.mx
                 </a>
               </div>
               <div className="flex items-start gap-3">
                 <Phone className="w-5 h-5 mt-0.5 text-accent" />
-                <a href="tel:+525512345678" className="text-sm text-primary-foreground hover:text-accent transition-colors duration-200 font-medium">
-                  +52 (55) 1234-5678
+                <a href="tel:+526565504406" className="text-sm text-primary-foreground hover:text-accent transition-colors duration-200 font-medium">
+                  +52 (656) 550-4406
                 </a>
               </div>
               <div className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 mt-0.5 text-accent" />
                 <span className="text-sm text-primary-foreground opacity-90 font-medium">
-                  Ciudad de México, México
+                  Ciudad Juárez, México
                 </span>
               </div>
             </div>

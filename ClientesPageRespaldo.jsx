@@ -185,7 +185,6 @@ function ClientesPage() {
                   <Tabs defaultValue="login" className="w-full">
                     <TabsList className="grid w-full grid-cols-2 mb-8 bg-muted p-1 rounded-xl">
                       <TabsTrigger value="login" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white transition-all">Iniciar sesión</TabsTrigger>
-                      <TabsTrigger value="register" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white transition-all">Registrarse</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="login">
@@ -229,88 +228,6 @@ function ClientesPage() {
 
                           <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold mt-4 shadow-md py-6">
                             Acceder
-                          </Button>
-                        </form>
-                      </motion.div>
-                    </TabsContent>
-
-                    <TabsContent value="register">
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="bg-card text-card-foreground rounded-2xl p-8 shadow-xl border border-border"
-                      >
-                        <div className="flex items-center gap-4 mb-8">
-                          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                            <UserPlus className="w-6 h-6 text-primary" />
-                          </div>
-                          <h2 className="text-2xl font-bold">Crear cuenta</h2>
-                        </div>
-
-                        <form onSubmit={handleRegister} className="space-y-5">
-                          <div className="space-y-1">
-                            <Label htmlFor="register-name">Nombre completo</Label>
-                            <Input
-                              id="register-name"
-                              type="text"
-                              value={registerData.name}
-                              onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })}
-                              placeholder="Juan Pérez"
-                              required
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label htmlFor="register-email">Correo electrónico</Label>
-                            <Input
-                              id="register-email"
-                              type="email"
-                              value={registerData.email}
-                              onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
-                              placeholder="tu@empresa.com"
-                              required
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label htmlFor="register-company">Empresa</Label>
-                            <Input
-                              id="register-company"
-                              type="text"
-                              value={registerData.company}
-                              onChange={(e) => setRegisterData({ ...registerData, company: e.target.value })}
-                              placeholder="Nombre de tu empresa"
-                              required
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label htmlFor="register-password">Contraseña</Label>
-                            <Input
-                              id="register-password"
-                              type="password"
-                              value={registerData.password}
-                              onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
-                              placeholder="Mínimo 6 caracteres"
-                              required
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <Label htmlFor="register-confirm">Confirmar contraseña</Label>
-                            <Input
-                              id="register-confirm"
-                              type="password"
-                              value={registerData.confirmPassword}
-                              onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
-                              placeholder="Repite tu contraseña"
-                              required
-                            />
-                          </div>
-
-                          <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-bold mt-4 shadow-md py-6">
-                            Registrarme
                           </Button>
                         </form>
                       </motion.div>
