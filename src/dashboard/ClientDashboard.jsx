@@ -138,7 +138,7 @@ const ClientProjectsList = ({ projects, onOpenModal }) => {
 };
 
 const ProjectsShelf = ({ projects, onOpenModal }) => {
-    const coverTemplateUrl = "https://firebasestorage.googleapis.com/v0/b/portal-evelsa.firebasestorage.app/o/portada%20Carpetas.jpeg?alt=media&token=417eb65c-1694-4efc-9e2a-55528d43a8d6";
+    const coverTemplateUrl = "https://firebasestorage.googleapis.com/v0/b/portal-ecolam.firebasestorage.app/o/portada-portal.jpg?alt=media&token=4e059216-8863-48ca-ba08-47c4c0fe9bea";
 
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
