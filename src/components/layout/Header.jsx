@@ -90,7 +90,7 @@ function Header() {
                 ))}
                 <div className="mt-4 border-t pt-4">
                   <span className="text-xs text-muted-foreground font-medium block mb-4">
-                    Consultoría ambiental y seguridad industrial
+                    Consultoría ambiental, ergonomia ocupacional y seguridad industrial
                   </span>
                   <Link to="/contacto" onClick={() => setIsOpen(false)}>
                     <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90 font-bold py-6">

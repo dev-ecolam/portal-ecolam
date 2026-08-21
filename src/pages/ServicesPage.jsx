@@ -1,10 +1,7 @@
-
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import { Shield, Users, Award, Leaf, FileCheck, Building2, Factory } from 'lucide-react';
-import Header from '@/components/Header.jsx';
-import Footer from '@/components/Footer.jsx';
-import ServiceCard from '@/components/ServiceCard.jsx';
+import ServiceCard from '@/components/landing/ServiceCard.jsx';
 import { motion } from 'framer-motion';
 
 function ServicesPage() {
@@ -108,43 +105,34 @@ function ServicesPage() {
         <title>Servicios - Ecolam</title>
         <meta name="description" content="Catálogo completo de servicios de Ecolam: ergonomía, seguridad ocupacional, cumplimiento STPS y SEMARNAT, NOMs, colaboraciones gubernamentales y servicios para maquiladoras." />
       </Helmet>
+      <section className="py-24 bg-muted border-b border-border">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-3xl mx-auto text-center"
+          >
+            <h1 className="text-4xl md:text-5xl font-bold mb-6">
+              Nuestros servicios
+            </h1>
+            <div className="w-24 h-1 bg-accent mx-auto mb-6 rounded-full" />
+            <p className="text-xl text-foreground/80 leading-relaxed">
+              Soluciones integrales en seguridad, ergonomía y cumplimiento normativo diseñadas para proteger a tu equipo y optimizar tus operaciones
+            </p>
+          </motion.div>
+        </div>
+      </section>
 
-      <div className="min-h-screen flex flex-col">
-        <Header />
-
-        <main className="flex-grow">
-          <section className="py-24 bg-muted border-b border-border">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                className="max-w-3xl mx-auto text-center"
-              >
-                <h1 className="text-4xl md:text-5xl font-bold mb-6">
-                  Nuestros servicios
-                </h1>
-                <div className="w-24 h-1 bg-accent mx-auto mb-6 rounded-full" />
-                <p className="text-xl text-foreground/80 leading-relaxed">
-                  Soluciones integrales en seguridad, ergonomía y cumplimiento normativo diseñadas para proteger a tu equipo y optimizar tus operaciones
-                </p>
-              </motion.div>
-            </div>
-          </section>
-
-          <section className="py-24 bg-background">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {services.map((service, index) => (
-                  <ServiceCard key={index} {...service} />
-                ))}
-              </div>
-            </div>
-          </section>
-        </main>
-
-        <Footer />
-      </div>
+      <section className="py-24 bg-background">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {services.map((service, index) => (
+              <ServiceCard key={index} {...service} />
+            ))}
+          </div>
+        </div>
+      </section>
     </>
   );
 }

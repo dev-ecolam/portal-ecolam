@@ -2,9 +2,7 @@
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import { TrendingUp, Award, Users, Building } from 'lucide-react';
-import Header from '@/components/Header.jsx';
-import Footer from '@/components/Footer.jsx';
-import TimelineItem from '@/components/TimelineItem.jsx';
+import TimelineItem from '@/components/landing/TimelineItem.jsx';
 import { motion } from 'framer-motion';
 
 function TrayectoriaPage() {
@@ -97,98 +95,89 @@ function TrayectoriaPage() {
       <Helmet>
         <title>Trayectoria - Ecolam</title>
         <meta name="description" content="Conoce la historia de Ecolam: 15 años de experiencia, 847 proyectos completados, más de 12,400 trabajadores capacitados y presencia en 12 estados de México." />
-      </Helmet>
+  </Helmet>
+      <section className="py-24 bg-muted border-b border-border">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-3xl mx-auto text-center"
+          >
+            <h1 className="text-4xl md:text-5xl font-bold mb-6">
+              Nuestra trayectoria
+            </h1>
+            <div className="w-24 h-1 bg-accent mx-auto mb-6 rounded-full" />
+            <p className="text-xl text-foreground/80 leading-relaxed">
+              Más de 15 años transformando espacios de trabajo en entornos seguros, saludables y sostenibles
+            </p>
+          </motion.div>
+        </div>
+      </section>
 
-      <div className="min-h-screen flex flex-col">
-        <Header />
+      <section className="py-24 bg-background border-b border-border">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Logros destacados</h2>
+            <div className="w-16 h-1 bg-accent mx-auto mb-6 rounded-full" />
+          </motion.div>
 
-        <main className="flex-grow">
-          <section className="py-24 bg-muted border-b border-border">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {achievements.map((achievement, index) => (
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6 }}
-                className="max-w-3xl mx-auto text-center"
-              >
-                <h1 className="text-4xl md:text-5xl font-bold mb-6">
-                  Nuestra trayectoria
-                </h1>
-                <div className="w-24 h-1 bg-accent mx-auto mb-6 rounded-full" />
-                <p className="text-xl text-foreground/80 leading-relaxed">
-                  Más de 15 años transformando espacios de trabajo en entornos seguros, saludables y sostenibles
-                </p>
-              </motion.div>
-            </div>
-          </section>
-
-          <section className="py-24 bg-background border-b border-border">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
-                className="text-center mb-16"
-              >
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">Logros destacados</h2>
-                <div className="w-16 h-1 bg-accent mx-auto mb-6 rounded-full" />
-              </motion.div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                {achievements.map((achievement, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: index * 0.1 }}
-                    className="bg-card text-card-foreground rounded-2xl p-8 text-center shadow-md border border-border hover:shadow-xl transition-all"
-                  >
-                    <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
-                      <achievement.icon className="w-8 h-8 text-primary" />
-                    </div>
-                    <p className="text-4xl font-extrabold text-primary mb-3">{achievement.value}</p>
-                    <p className="font-bold text-lg mb-2">{achievement.label}</p>
-                    <p className="text-sm text-muted-foreground">{achievement.description}</p>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="py-24 bg-muted">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-              <motion.div
+                key={index}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.6 }}
-                className="text-center mb-16"
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="bg-card text-card-foreground rounded-2xl p-8 text-center shadow-md border border-border hover:shadow-xl transition-all"
               >
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">Nuestra historia</h2>
-                <div className="w-16 h-1 bg-accent mx-auto mb-6 rounded-full" />
-                <p className="text-lg text-foreground/80 max-w-2xl mx-auto">
-                  Un recorrido de crecimiento, innovación y compromiso con la seguridad
-                </p>
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+                  <achievement.icon className="w-8 h-8 text-primary" />
+                </div>
+                <p className="text-4xl font-extrabold text-primary mb-3">{achievement.value}</p>
+                <p className="font-bold text-lg mb-2">{achievement.label}</p>
+                <p className="text-sm text-muted-foreground">{achievement.description}</p>
               </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-              <div className="max-w-4xl mx-auto">
-                {milestones.map((milestone, index) => (
-                  <TimelineItem
-                    key={index}
-                    {...milestone}
-                    index={index}
-                    isLast={index === milestones.length - 1}
-                  />
-                ))}
-              </div>
-            </div>
-          </section>
-        </main>
+      <section className="py-24 bg-muted">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Nuestra historia</h2>
+            <div className="w-16 h-1 bg-accent mx-auto mb-6 rounded-full" />
+            <p className="text-lg text-foreground/80 max-w-2xl mx-auto">
+              Un recorrido de crecimiento, innovación y compromiso con la seguridad
+            </p>
+          </motion.div>
 
-        <Footer />
-      </div>
+          <div className="max-w-4xl mx-auto">
+            {milestones.map((milestone, index) => (
+              <TimelineItem
+                key={index}
+                {...milestone}
+                index={index}
+                isLast={index === milestones.length - 1}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
     </>
   );
 }
