@@ -13,17 +13,22 @@ const ReviewProjectsTable = ({ projects, onUpdateProject }) => {
         const { project } = confirmingAction.payload;
         
         try {
-            // Pasamos el proyecto a "aprobado_supervisor" para que el técnico genere la nota
+            // CAMBIO CLAVE AQUÍ: 
+            // En lugar de pasarlo a 'terminado', lo pasamos a 'activo' y encendemos la alerta de acuse.
             const { error } = await supabase
                 .from('proyectos_v2')
-                .update({ estado: 'aprobado_supervisor' })
+                .update({ 
+                    estado: 'activo', // Lo regresamos a la cancha del técnico
+                    esperando_acuse: true // ESTO enciende el banner rojo en el TecnicoDashboard
+                })
                 .eq('id', project.id);
             
             if (error) throw error;
-            toast.success("Proyecto aprobado. El técnico ya puede generar la nota.");
+            toast.success("Proyecto aprobado. El técnico ha sido notificado para subir el Acuse.");
             setConfirmingAction(null);
             onUpdateProject();
         } catch (err) {
+            console.error(err);
             toast.error("Error al aprobar el proyecto.");
         }
     };
@@ -75,11 +80,18 @@ const ReviewProjectsTable = ({ projects, onUpdateProject }) => {
                              <tr key={project.id} className="hover:bg-muted/30">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-primary">{project.npu}</td>
                                 <td className="px-6 py-4 text-sm">{project.clientes?.nombre_empresa}</td>
+                                {/* Celda de Evidencia en ReviewProjectsTable.jsx */}
                                 <td className="px-6 py-4 text-sm">
-                                    {/* Botón para que el supervisor vea el PDF */}
                                     {project.url_evidencia ? (
-                                        <a href={project.url_evidencia} target="_blank" rel="noopener noreferrer" className="text-accent font-bold hover:underline">
-                                            Ver PDF Subido
+                                        <a 
+                                            href={`/visor.html?pdf=${encodeURIComponent(project.url_evidencia)}`} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="text-accent font-bold hover:underline flex items-center bg-accent/10 px-3 py-2 rounded-lg w-max"
+                                        >
+                                            {/* Importa el icono BookOpen de lucide-react */}
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                                            Revisar en Visor 3D
                                         </a>
                                     ) : (
                                         <span className="text-muted-foreground">Sin archivo</span>
