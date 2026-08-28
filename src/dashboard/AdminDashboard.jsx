@@ -8,6 +8,7 @@ import { ServiceManagement } from '../components/admin/ServiceManagement';
 import { NewProjectForm } from '../components/admin/NewProjectForm';
 import { DataManagement } from '../components/shared/DataManagement';
 import DashboardLayout from '../components/layout/DashboardLayout';
+import { HistorialProyectosTable } from '../components/admin/HistorialProyectosTable';
 
 export const AdminDashboard = ({ selectedRole }) => {
     const { userData, user } = useUser();
@@ -47,6 +48,7 @@ export const AdminDashboard = ({ selectedRole }) => {
                             <button onClick={() => setView('users')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${view === 'users' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground'}`}>Usuarios</button>
                             <button onClick={() => setView('services')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${view === 'services' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground'}`}>Servicios</button>
                             <button onClick={() => setView('providers')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${view === 'providers' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground'}`}>Proveedores</button>
+                            <button onClick={() => setView('archivo')}>Archivo Histórico</button>
                         </nav>
                     </div>
                     
@@ -89,6 +91,8 @@ export const AdminDashboard = ({ selectedRole }) => {
                             userRole="administrador" 
                         />
                     }
+
+                    {view === 'archivo' && <HistorialProyectosTable />}
                 </div>
             </div>
         </DashboardLayout>
