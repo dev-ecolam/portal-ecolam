@@ -14,7 +14,7 @@ import { ModalSolicitarEcotech } from '../components/tecnico/ModalSolicitarEcote
 import { ClientDossierPanel } from '../components/tecnico/ClientDossierPanel';
 import { AgendaTecnicoPanel } from '../components/tecnico/AgendaTecnicoPanel'; // Asegúrate de tener este archivo creado
 
-export const TecnicoDashboard = () => {
+const TecnicoDashboard = () => {
     const [projects, setProjects] = useState([]);
     const [loadingProjects, setLoadingProjects] = useState(true);
     const [activeProject, setActiveProject] = useState(null);
@@ -327,3 +327,5 @@ export const TecnicoDashboard = () => {
         </DashboardLayout>
     );
 };
+
+export default TecnicoDashboard;

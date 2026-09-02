@@ -4,7 +4,7 @@ import DashboardLayout from '../components/layout/DashboardLayout';
 import { FinancialMetrics } from '../components/directivo/FinancialMetrics';
 import { OperationalMetrics } from '../components/directivo/OperationalMetrics';
 
-export const DirectivoDashboard = () => {
+const DirectivoDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [rawData, setRawData] = useState({ projects: [], invoices: [], technicians: [] });
@@ -67,3 +67,5 @@ export const DirectivoDashboard = () => {
         </DashboardLayout>
     );
 };
+
+export default DirectivoDashboard;

@@ -1,12 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUser } from '../../context/UserContext';
 import { motion } from 'framer-motion';
-import Header from './Header'; 
-import Footer from './Footer'; 
 
 const DashboardLayout = ({ children }) => {
   const { user, userData } = useUser();
@@ -26,9 +24,6 @@ const DashboardLayout = ({ children }) => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans">
-      
-      {/* 1. Header Global (Descomenta si lo usas) */}
-      <Header />
 
       <main className="flex-grow w-full max-w-7xl mx-auto space-y-6 py-8 px-4 sm:px-6 lg:px-8">
         
@@ -60,9 +55,6 @@ const DashboardLayout = ({ children }) => {
         </motion.div>
 
       </main>
-
-      {/* 4. Footer Global (Descomenta si lo usas) */}
-      <Footer />
       
     </div>
   );

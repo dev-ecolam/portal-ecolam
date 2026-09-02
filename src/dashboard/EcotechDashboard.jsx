@@ -7,7 +7,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { EcotechProjectsTable } from '@/components/ecotech/EcotechProjectsTable';
 
 
-export const EcotechDashboard = () => {
+const EcotechDashboard = () => {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -56,3 +56,5 @@ export const EcotechDashboard = () => {
         </DashboardLayout>
     );
 };
+
+export default EcotechDashboard;

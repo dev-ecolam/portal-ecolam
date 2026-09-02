@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { Search, FolderOpen, Download } from 'lucide-react';
 
 export const HistorialProyectosTable = () => {

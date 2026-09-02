@@ -5,7 +5,7 @@ import { EmployeesPanel } from '../components/rh/EmployeesPanel';
 import { AttendancePanel } from '../components/rh/AttendancePanel';
 import { HolidaysPanel } from '../components/rh/HolidaysPanel';
 
-export const HRDashboard = () => {
+const HRDashboard = () => {
     const [view, setView] = useState('empleados');
 
     return (
@@ -47,3 +47,5 @@ export const HRDashboard = () => {
         </DashboardLayout>
     );
 };
+
+export default HRDashboard;

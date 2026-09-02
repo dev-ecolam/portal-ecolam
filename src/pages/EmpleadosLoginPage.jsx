@@ -37,19 +37,43 @@ const EmpleadosLoginPage = () => {
         .single();
 
       const role = userData?.rol || (userData?.roles && userData.roles[0]);
-
+      
       toast.success('Acceso autorizado');
 
-      // 3. Enrutamiento inteligente según el rol
-      if (role === 'administrador' || role === 'directivo') {
-        navigate('/intranet/admin');
-      } else if (role === 'tecnico' || role === 'supervisor') {
-        navigate('/intranet/tecnico');
-      } else if (role === 'finanzas') {
-        navigate('/intranet/finanzas');
-      } else {
-        // Si es cliente y entró por la puerta equivocada, lo mandamos a su portal
-        navigate('/portal/dashboard'); 
+      // 3. Enrutamiento inteligente según el rol (con Switch)
+      const userRole = role?.toLowerCase();
+
+      switch (userRole) {
+        case 'administrador':
+          navigate('/intranet/admin');
+          break;
+        case 'directivo':
+          navigate('/intranet/directivo');
+          break;
+        case 'rh':
+          navigate('/intranet/rh');
+          break;
+        case 'finanzas':
+          navigate('/intranet/finanzas');
+          break;
+        case 'supervisor':
+          navigate('/intranet/supervisor');
+          break;
+        case 'tecnico':
+          navigate('/intranet/tecnico');
+          break;
+        case 'ecotech':
+          navigate('/intranet/ecotech');
+          break;
+        case 'cliente':
+          navigate('/portal/dashboard');
+          break;
+        default:
+          // Si por alguna razón el rol está vacío o no coincide, lo regresamos/mantenemos a salvo
+          toast.error('Rol no reconocido. Contacta a soporte.');
+          await supabase.auth.signOut();
+          navigate('/login'); 
+          break;
       }
 
     } catch (error) {

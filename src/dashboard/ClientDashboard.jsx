@@ -5,7 +5,7 @@ import ClientProjectsList from '@/components/client/ClientProjectsList';
 import ProjectsShelf from '@/components/client/ProjectsShelf';
 import HeyzineViewerModal from '@/components/modals/HeyzineViewerModal';
 
-export const ClientDashboard = ({ selectedClientProfile }) => {
+const ClientDashboard = ({ selectedClientProfile }) => {
     const [projects, setProjects] = useState([]);
     const [shelfProjects, setShelfProjects] = useState([]);
     const [clientView, setClientView] = useState('shelf');
@@ -99,3 +99,5 @@ export const ClientDashboard = ({ selectedClientProfile }) => {
         </DashboardLayout>    
     );
 };
+
+export default ClientDashboard; 

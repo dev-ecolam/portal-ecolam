@@ -2,6 +2,11 @@ import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { supabase } from '../supabase/client';
+
+// 1. IMPORTAMOS EL PROVIDER AQUÍ ARRIBA (Este era el que faltaba)
+import { UserProvider } from './context/UserContext';
+
+// Importaciones normales
 import HomePage from './pages/HomePage';
 import ServicesPage from './pages/ServicesPage';
 import TrayectoriaPage from './pages/TrayectoriaPage';
@@ -10,10 +15,15 @@ import ClientesPage from './pages/ClientesPage';
 import EmpleadosLoginPage from './pages/EmpleadosLoginPage';
 import PublicLayout from './components/layout/PublicLayout';
 
-// 2. IMPORTACIONES PEREZOSAS (Lazy Loading) - Cambiamos 'dashboards' por 'dashboard'
-const ClientDashboard = lazy(() => import('./dashboard/ClientDashboard').then(module => ({ default: module.ClientDashboard })));
-const AdminDashboard = lazy(() => import('./dashboard/AdminDashboard').then(module => ({ default: module.AdminDashboard })));
-//const TecnicoDashboard = lazy(() => import('./dashboard/TecnicoDashboard').then(module => ({ default: module.TecnicoDashboard })));
+// 2. IMPORTACIONES PEREZOSAS (Lazy Loading)
+const ClientDashboard = lazy(() => import('./dashboard/ClientDashboard'));
+const AdminDashboard = lazy(() => import('./dashboard/AdminDashboard'));
+const TecnicoDashboard = lazy(() => import('./dashboard/TecnicoDashboard'));
+const SupervisorDashboard = lazy(() => import('./dashboard/SupervisorDashboard'));
+const FinanzasDashboard = lazy(() => import('./dashboard/FinanzasDashboard'));
+const HRDashboard = lazy(() => import('./dashboard/HRDashboard'));
+const DirectivoDashboard = lazy(() => import('./dashboard/DirectivoDashboard'));
+const EcotechDashboard = lazy(() => import('./dashboard/EcotechDashboard'));
 
 // 3. PANTALLA DE CARGA
 const LoadingScreen = () => (
@@ -43,40 +53,55 @@ const App = () => {
   if (loading) return <LoadingScreen />;
 
   return (
-    <div className="bg-[#cdcdcd] min-h-screen font-sans">
-      <Toaster richColors position="bottom-right" />
-      
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          
-          {/* ==========================================
-              SITIO WEB PÚBLICO (Envueltos en PublicLayout)
-             ========================================== */}
-          <Route element={<PublicLayout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/servicios" element={<ServicesPage />} />
-            <Route path="/trayectoria" element={<TrayectoriaPage />} />
-            <Route path="/contacto" element={<ContactoPage />} />
-            <Route path="/clientes" element={<ClientesPage />} />
-          </Route>
+    // 4. EL USER PROVIDER ABRAZA TODA LA APLICACIÓN
+    <UserProvider>
+      <div className="bg-[#cdcdcd] min-h-screen font-sans">
+        <Toaster richColors position="bottom-right" />
+        
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            
+            {/* ==========================================
+                SITIO WEB PÚBLICO (Envueltos en PublicLayout)
+               ========================================== */}
+            <Route element={<PublicLayout />}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/servicios" element={<ServicesPage />} />
+              <Route path="/trayectoria" element={<TrayectoriaPage />} />
+              <Route path="/contacto" element={<ContactoPage />} />
+              <Route path="/clientes" element={<ClientesPage />} />
+            </Route>
 
-          {/* ==========================================
-              PUERTA TRASERA EMPLEADOS (Sin Header/Footer)
-             ========================================== */}
-          <Route path="/intranet" element={<EmpleadosLoginPage />} />
-
-          {/* ==========================================
-              RUTAS PROTEGIDAS (Dashboards)
-             ========================================== */}
-          <Route path="/portal/dashboard" element={<ClientDashboard />} />
-          <Route path="/intranet/admin" element={<AdminDashboard />} />
-          {/* <Route path="/intranet/tecnico" element={<TecnicoDashboard />} /> */}
-          
-          {/* RUTA 404 */}
-          <Route path="*" element={<h1 className="text-center mt-20 text-2xl font-bold">404 - Página no encontrada</h1>} />
-        </Routes>
-      </Suspense>
-    </div>
+            {/* ==========================================
+                PUERTA TRASERA EMPLEADOS
+               ========================================== */}
+            <Route path="/intranet" element={<EmpleadosLoginPage />} />
+            
+            {/* ==========================================
+                RUTAS PROTEGIDAS (Dashboards)
+               ========================================== */}
+            <Route path="/portal/dashboard" element={<ClientDashboard />} />
+            <Route path="/intranet/admin" element={<AdminDashboard />} />
+            
+            {/* NUEVOS DASHBOARDS INTEGRADOS */}
+            <Route path="/intranet/tecnico" element={<TecnicoDashboard />} />
+            <Route path="/intranet/supervisor" element={<SupervisorDashboard />} />
+            <Route path="/intranet/finanzas" element={<FinanzasDashboard />} />
+            <Route path="/intranet/rh" element={<HRDashboard />} />
+            <Route path="/intranet/directivo" element={<DirectivoDashboard />} />
+            <Route path="/intranet/ecotech" element={<EcotechDashboard />} />
+            
+            {/* RUTA 404 */}
+            <Route path="*" element={
+              <div className="flex flex-col items-center justify-center mt-32">
+                <h1 className="text-4xl font-black text-gray-800">404</h1>
+                <p className="text-xl font-bold text-gray-600 mt-2">Página no encontrada</p>
+              </div>
+            } />
+          </Routes>
+        </Suspense>
+      </div>
+    </UserProvider>
   );
 };
 

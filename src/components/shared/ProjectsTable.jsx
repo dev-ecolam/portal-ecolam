@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { supabase } from '../../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { formatDate } from '../../utils/helpers';
-import { ConfirmationModal } from '../UI/ConfirmationModal';
-import { StatusBadge } from '../../utils/constants'; // Asegúrate de que este componente exista en tu proyecto
+import { ConfirmationModal } from '../ui/UIComponents';
+import { StatusBadge } from '../ui/UIComponents';
 
 export const ProjectsTable = ({ projects, userRole, supervisorView, onManageClick, onAssignClick, onUpdateProject }) => {
     const [expandedRowId, setExpandedRowId] = useState(null);

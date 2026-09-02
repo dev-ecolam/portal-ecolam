@@ -5,7 +5,7 @@ import DashboardLayout from '../components/layout/DashboardLayout';
 import { ConfirmationModal } from '../components/ui/ConfirmationModal';
 import { Search, FileText, UploadCloud, Link as LinkIcon, Calendar, CheckCircle2 } from 'lucide-react';
 
-export const PracticanteDashboard = () => {
+const PracticanteDashboard = () => {
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
     const [modalProject, setModalProject] = useState(null);
@@ -351,3 +351,5 @@ const ManageFinalDeliveryModal = ({ project, onClose, onFinalized }) => {
         </div>
     );
 };
+
+export default ManageFinalDeliveryModal;

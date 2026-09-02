@@ -12,7 +12,7 @@ import { ActionWithReasonModal } from '../components/ui/ActionWithReasonModal';
 import { ProjectsTable } from '../components/shared/ProjectsTable';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
-export const SupervisorDashboard = () => {
+const SupervisorDashboard = () => {
     const [view, setView] = useState('new');
     const [allProjects, setAllProjects] = useState([]);
     const [technicians, setTechnicians] = useState([]);
@@ -234,3 +234,5 @@ export const SupervisorDashboard = () => {
         </DashboardLayout>
     );
 };
+
+export default SupervisorDashboard;

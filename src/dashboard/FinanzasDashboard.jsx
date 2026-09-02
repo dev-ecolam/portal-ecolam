@@ -8,7 +8,7 @@ import { PendingInvoicesTable } from '@/components/finance/PendingInvoicesTable'
 import { FileText, DollarSign, AlertTriangle, TrendingUp, Wallet } from 'lucide-react';
 import { OpExExpensesList } from '@/components/finance/OpExExpensesList';
 
-export const FinanzasDashboard = () => {
+const FinanzasDashboard = () => {
     const [view, setView] = useState('dashboard');
     const [projects, setProjects] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -83,3 +83,5 @@ export const FinanzasDashboard = () => {
         </DashboardLayout>
     );
 };
+
+export default FinanzasDashboard;

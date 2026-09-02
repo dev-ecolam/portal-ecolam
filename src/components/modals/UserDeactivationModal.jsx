@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabase/client';
-import { Alert } from '../components/UI/Alert';
+import { supabase } from '../../../supabase/client';
+import { Alert } from '../ui/UIComponents';
 
 export const UserDeactivationModal = ({ userToDeactivate, onClose, onSuccess }) => {
     const [activeProjects, setActiveProjects] = useState([]);
