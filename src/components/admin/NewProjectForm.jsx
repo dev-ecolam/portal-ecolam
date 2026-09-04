@@ -85,10 +85,10 @@ const SearchableSelect = ({ options, value, onChange, placeholder, displayKey, v
 // ==============================================================================
 const NewProjectForm = ({ onProjectAdded }) => {
     const formRef = useRef(null);
-    const [collections, setCollections] = useState({ clientes: [], servicios: [], plantas: [], proveedores: [] });
+    const [collections, setCollections] = useState({ servicios: [], plantas: [], proveedores: [] });
     
     const [formData, setFormData] = useState({
-        cliente_id: '', planta_id: '', servicio_id: '', proveedor_id: '', comentarios_apertura: '',
+        planta_id: '', servicio_id: '', proveedor_id: '', comentarios_apertura: '',
         fecha_apertura: new Date().toISOString().split('T')[0],
         precio_cotizacion_cliente: '', costo_proveedor: '', cotizacion_cliente_ref: '', 
         po_cliente_ref: '', cotizacion_proveedor_ref: ''
@@ -100,15 +100,13 @@ const NewProjectForm = ({ onProjectAdded }) => {
     useEffect(() => {
         const fetchDropdowns = async () => {
             try {
-                const [cRes, pRes, sRes, provRes] = await Promise.all([
-                    supabase.from('usuarios').select('*').eq('rol', 'cliente').eq('estado_empleado', 'Activo').order('empresa'),
+                const [pRes, sRes, provRes] = await Promise.all([
                     supabase.from('plantas').select('*').eq('estado', 'Activo').order('nombre_planta'),
                     supabase.from('servicios').select('*').eq('estado', 'Activo').order('nombre_servicio'),
                     supabase.from('proveedores').select('*').eq('estado', 'Activo').order('nombre_proveedor')
                 ]);
                 
                 setCollections({ 
-                    clientes: cRes.data || [], 
                     plantas: pRes.data || [],
                     servicios: sRes.data || [], 
                     proveedores: provRes.data || [] 
@@ -126,16 +124,29 @@ const NewProjectForm = ({ onProjectAdded }) => {
         setError('');
         
         try {
-            const cliente = collections.clientes.find(c => c.id === formData.cliente_id);
             const planta = collections.plantas.find(p => p.id === formData.planta_id);
             const servicio = collections.servicios.find(s => s.id === formData.servicio_id);
             const proveedor = collections.proveedores.find(p => p.id === formData.proveedor_id);
 
-            // Validación mejorada ahora que usamos inputs personalizados
-            if (!cliente || !planta || !servicio || !proveedor) {
-                throw new Error("Por favor, selecciona opciones válidas del catálogo para Cliente, Planta, Servicio y Proveedor.");
+            if (!planta || !servicio || !proveedor) {
+                throw new Error("Por favor, selecciona opciones válidas del catálogo para Planta, Servicio y Proveedor.");
             }
 
+            // 1. Deducción automática del Cliente basado en la Planta seleccionada
+            let deducedClienteId = null;
+            const { data: clienteData, error: clienteError } = await supabase
+                .from('usuarios')
+                .select('id')
+                .eq('rol', 'cliente')
+                .eq('estado_empleado', 'Activo')
+                .contains('plantasAsociadas', `[{"id": "${formData.planta_id}"}]`)
+                .maybeSingle(); // maybeSingle para no lanzar error crítico si ninguna persona tiene la planta
+
+            if (clienteData) {
+                deducedClienteId = clienteData.id;
+            }
+
+            // 2. Generar el NPU (Ahora sin ID del cliente)
             const anioActual = new Date(formData.fecha_apertura).getFullYear();
             let { data: contadorData, error: countError } = await supabase.from('contadores_npu').select('*').eq('anio', anioActual).single();
             
@@ -149,14 +160,17 @@ const NewProjectForm = ({ onProjectAdded }) => {
 
             const consecutivoFormateado = consecutivoActual.toString().padStart(3, '0');
             const ultimosDos = anioActual.toString().slice(-2);
-            const npu = `${cliente.cliente_id_numerico}-${planta.planta_id_numerico}-${servicio.servicio_id_numerico}-${proveedor.proveedor_id_numerico}-${consecutivoFormateado}${ultimosDos}`;
+            // NPU: Planta - Servicio - Proveedor - ConsecutivoAnio
+            const npu = `${planta.planta_id_numerico}-${servicio.servicio_id_numerico}-${proveedor.proveedor_id_numerico}-${consecutivoFormateado}${ultimosDos}`;
 
+            // 3. Evaluar estado inicial
             const tienePO = formData.po_cliente_ref && formData.po_cliente_ref.trim() !== '';
             const estadoInicial = tienePO ? 'Activo' : 'Cotización';
             const fechaDeActivacion = tienePO ? formData.fecha_apertura : null;
 
+            // 4. Insertar Proyecto
             const { error: insertError } = await supabase.from('proyectos_v2').insert([{
-                cliente_id: formData.cliente_id,
+                cliente_id: deducedClienteId, // Deducción automática
                 planta_id: formData.planta_id,
                 servicio_id: formData.servicio_id,
                 proveedor_id: formData.proveedor_id,
@@ -174,11 +188,11 @@ const NewProjectForm = ({ onProjectAdded }) => {
 
             if (insertError) throw insertError;
             
-            toast.success("Proyecto/Cotización creado con NPU: " + npu);
+            toast.success(`Proyecto/Cotización creado con NPU: ${npu}`);
             
             formRef.current.reset();
             setFormData({
-                cliente_id: '', planta_id: '', servicio_id: '', proveedor_id: '', comentarios_apertura: '',
+                planta_id: '', servicio_id: '', proveedor_id: '', comentarios_apertura: '',
                 fecha_apertura: new Date().toISOString().split('T')[0],
                 precio_cotizacion_cliente: '', costo_proveedor: '', cotizacion_cliente_ref: '', 
                 po_cliente_ref: '', cotizacion_proveedor_ref: ''
@@ -201,19 +215,11 @@ const NewProjectForm = ({ onProjectAdded }) => {
             
             <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
                 
-                {/* FILA 1: FECHA Y CATÁLOGOS CON BUSCADOR */}
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-muted/20 p-5 rounded-xl border border-border">
+                {/* FILA 1: FECHA Y CATÁLOGOS CON BUSCADOR (SIN CLIENTE) */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-muted/20 p-5 rounded-xl border border-border">
                     <div>
                         <label className="block text-[11px] font-bold text-muted-foreground mb-1 uppercase">Fecha (Apertura)</label>
                         <input type="date" value={formData.fecha_apertura} onChange={e => setFormData({...formData, fecha_apertura: e.target.value})} className="w-full p-2 border rounded-lg outline-none focus:ring-1 focus:ring-accent text-sm" required />
-                    </div>
-                    
-                    <div>
-                        <label className="block text-[11px] font-bold text-muted-foreground mb-1 uppercase">Cliente</label>
-                        <SearchableSelect 
-                            options={collections.clientes} value={formData.cliente_id} placeholder="Buscar..." displayKey="empresa" valueKey="id"
-                            onChange={val => setFormData({...formData, cliente_id: val})}
-                        />
                     </div>
 
                     <div>
