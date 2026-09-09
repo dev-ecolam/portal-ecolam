@@ -10,17 +10,22 @@ const DashboardLayout = ({ children }) => {
   const { user, userData } = useUser();
   const navigate = useNavigate();
 
+  // Extraemos el rol antes de cerrar sesión para saber a dónde redirigir
+  const rol = userData?.rol || (userData?.roles && userData.roles[0]) || 'Rol no definido';
+
   const handleLogout = async () => {
+    // 1. Definimos la ruta destino según el rol
+    const rutaDestino = rol === 'cliente' ? '/portal' : '/intranet';
+
+    // 2. Cerramos la sesión en Supabase y limpiamos el local storage
     await supabase.auth.signOut();
-    // Limpiamos la sesión local si la estás usando
     localStorage.removeItem('ecolamClientSession');
-    // Redirigimos al login principal
-    navigate('/portal');
+    
+    // 3. Redirigimos dinámicamente
+    navigate(rutaDestino);
   };
 
-  // Extraemos el nombre y rol de tu Contexto de Usuario de PostgreSQL
   const nombre = userData?.nombre || user?.email?.split('@')[0] || 'Usuario';
-  const rol = userData?.rol || (userData?.roles && userData.roles[0]) || 'Rol no definido';
 
   return (
     <div className="min-h-screen flex flex-col bg-background font-sans">

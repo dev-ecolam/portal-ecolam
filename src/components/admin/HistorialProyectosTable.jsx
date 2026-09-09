@@ -8,7 +8,7 @@ export const HistorialProyectosTable = () => {
     
     // Filtros
     const [npuFilter, setNpuFilter] = useState('');
-    const [clientFilter, setClientFilter] = useState('');
+    const [plantaFilter, setPlantaFilter] = useState('');
     const [providerFilter, setProviderFilter] = useState('');
     const [serviceFilter, setServiceFilter] = useState('');
     
@@ -20,23 +20,28 @@ export const HistorialProyectosTable = () => {
         const fetchHistory = async () => {
             setLoading(true);
             try {
-                // Cálculo de 5 años (Requerimiento Fiscal SAT México)
-                const startYear = new Date().getFullYear() - 5;
+                // Cálculo de rango: Desde hace 5 años, HASTA el 1 de Enero del año actual (excluyendo el año en curso)
+                const currentYear = new Date().getFullYear();
+                const startYear = currentYear - 5;
+                
                 const startDate = `${startYear}-01-01`;
+                const endDate = `${currentYear}-01-01`;
 
-                // Consulta relacional (JOINs en Supabase)
+                // Consulta relacional
                 const { data, error } = await supabase
                     .from('proyectos_v2')
                     .select(`
-                        id, npu, estado, fecha_apertura, 
-                        precio_cotizacion_cliente, costo_proveedor,
+                        id, npu, estado, fecha_apertura, fecha_activacion, comentarios_apertura,
+                        precio_cotizacion_cliente, costo_proveedor, nombre_estudio,
                         po_cliente_ref, cotizacion_proveedor_ref, po_proveedor,
                         url_pdf_cliente, notas_supervisor,
-                        clientes(nombre_empresa),
+                        plantas(nombre_planta),
                         servicios(nombre_servicio),
+                        proveedores(nombre_proveedor),
                         facturas!facturas_proyecto_id_fkey(folio, tipo)
                     `)
                     .gte('fecha_apertura', startDate)
+                    .lt('fecha_apertura', endDate) // "lt" significa Less Than (Menor que el año actual)
                     .order('fecha_apertura', { ascending: false });
 
                 if (error) throw error;
@@ -48,9 +53,9 @@ export const HistorialProyectosTable = () => {
                     
                     return {
                         ...p,
-                        clienteNombre: p.clientes?.nombre_empresa || 'N/A',
+                        plantaNombre: p.plantas?.nombre_planta || 'N/A',
                         servicioNombre: p.servicios?.nombre_servicio || 'N/A',
-                        proveedorNombre: p.proveedor_nombre || 'N/A', // Asumiendo que sigue como texto libre o relación
+                        proveedorNombre: p.proveedores?.nombre_proveedor || p.proveedor_nombre || 'N/A', 
                         foliosCliente: facturasCliente || 'Sin factura',
                         foliosProv: facturasProv || '---'
                     };
@@ -68,7 +73,7 @@ export const HistorialProyectosTable = () => {
     }, []);
 
     // Listas únicas para los selectores (dropdowns)
-    const uniqueClients = useMemo(() => [...new Set(projects.map(p => p.clienteNombre))].sort(), [projects]);
+    const uniquePlantas = useMemo(() => [...new Set(projects.map(p => p.plantaNombre))].sort(), [projects]);
     const uniqueServices = useMemo(() => [...new Set(projects.map(p => p.servicioNombre))].sort(), [projects]);
     const uniqueProviders = useMemo(() => [...new Set(projects.map(p => p.proveedorNombre))].filter(n => n !== 'N/A').sort(), [projects]);
 
@@ -76,12 +81,12 @@ export const HistorialProyectosTable = () => {
     const filteredProjects = useMemo(() => {
         return projects.filter(p => {
             const matchNPU = !npuFilter || p.npu?.toLowerCase().includes(npuFilter.toLowerCase());
-            const matchClient = !clientFilter || p.clienteNombre === clientFilter;
+            const matchPlanta = !plantaFilter || p.plantaNombre === plantaFilter;
             const matchProvider = !providerFilter || p.proveedorNombre === providerFilter;
             const matchService = !serviceFilter || p.servicioNombre === serviceFilter;
-            return matchNPU && matchClient && matchProvider && matchService;
+            return matchNPU && matchPlanta && matchProvider && matchService;
         });
-    }, [projects, npuFilter, clientFilter, providerFilter, serviceFilter]);
+    }, [projects, npuFilter, plantaFilter, providerFilter, serviceFilter]);
 
     // Paginación
     const indexOfLastItem = currentPage * itemsPerPage;
@@ -94,7 +99,7 @@ export const HistorialProyectosTable = () => {
             <div className="p-6 border-b border-border bg-muted/20">
                 <div className="flex items-center gap-2 mb-4">
                     <FolderOpen className="w-5 h-5 text-accent"/>
-                    <h2 className="text-lg font-bold text-primary">Archivo Histórico (Legal 5 años)</h2>
+                    <h2 className="text-lg font-bold text-primary">Archivo de Proyectos y Cotizaciones</h2>
                 </div>
 
                 {/* Filtros */}
@@ -110,9 +115,9 @@ export const HistorialProyectosTable = () => {
                         />
                     </div>
                     
-                    <select value={clientFilter} onChange={(e) => { setClientFilter(e.target.value); setCurrentPage(1); }} className="px-3 py-2 border border-border rounded-lg bg-background text-sm outline-none">
-                        <option value="">Todos los Clientes</option>
-                        {uniqueClients.map(c => <option key={c} value={c}>{c}</option>)}
+                    <select value={plantaFilter} onChange={(e) => { setPlantaFilter(e.target.value); setCurrentPage(1); }} className="px-3 py-2 border border-border rounded-lg bg-background text-sm outline-none">
+                        <option value="">Todas las Plantas</option>
+                        {uniquePlantas.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
 
                     <select value={serviceFilter} onChange={(e) => { setServiceFilter(e.target.value); setCurrentPage(1); }} className="px-3 py-2 border border-border rounded-lg bg-background text-sm outline-none">
@@ -135,9 +140,9 @@ export const HistorialProyectosTable = () => {
                         <thead className="bg-muted/50">
                             <tr>
                                 <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Proyecto / Servicio</th>
-                                <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Cliente / Factura</th>
-                                <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Proveedor / Factura</th>
-                                <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Márgenes Financieros</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Planta / Fechas</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Finanzas / PO</th>
+                                <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase tracking-wider">Notas de Apertura</th>
                                 <th className="px-6 py-4 text-center text-xs font-bold text-muted-foreground uppercase tracking-wider">Entregable Final</th>
                             </tr>
                         </thead>
@@ -146,33 +151,53 @@ export const HistorialProyectosTable = () => {
                                 <tr><td colSpan="5" className="text-center py-8 text-muted-foreground">No se encontraron proyectos en el archivo.</td></tr>
                             ) : currentItems.map(p => (
                                 <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                                    {/* COLUMNA 1: Proyecto y Servicio */}
                                     <td className="px-6 py-4">
                                         <p className="font-bold text-primary">{p.npu}</p>
-                                        <p className="text-sm font-medium">{p.servicioNombre}</p>
-                                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full mt-1 inline-block ${p.estado === 'completado' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                        <p className="text-sm font-medium">{p.nombre_estudio}</p>
+                                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full mt-1 inline-block 
+                                            ${p.estado?.toLowerCase() === 'completado' ? 'bg-green-100 text-green-800' : 
+                                              p.estado?.toLowerCase() === 'cotización' ? 'bg-gray-100 text-gray-800' : 
+                                              'bg-yellow-100 text-yellow-800'}`}>
                                             {p.estado}
                                         </span>
                                     </td>
                                     
+                                    {/* COLUMNA 2: Planta y Fechas */}
                                     <td className="px-6 py-4">
-                                        <p className="text-sm font-bold">{p.clienteNombre}</p>
-                                        <p className="text-xs text-muted-foreground mt-1"><span className="font-bold text-blue-600">PO:</span> {p.po_cliente_ref || '-'}</p>
-                                        <p className="text-xs text-muted-foreground"><span className="font-bold text-blue-600">Fac:</span> {p.foliosCliente}</p>
+                                        <p className="text-sm font-bold text-foreground mb-1">{p.plantaNombre}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            <span className="font-bold text-gray-600">Cotizado:</span> {new Date(p.fecha_apertura).toLocaleDateString('es-MX')}
+                                        </p>
+                                        {p.fecha_activacion && p.estado?.toLowerCase() !== 'cotización' && (
+                                            <p className="text-xs text-muted-foreground mt-0.5">
+                                                <span className="font-bold text-accent">Activado:</span> {new Date(p.fecha_activacion).toLocaleDateString('es-MX')}
+                                            </p>
+                                        )}
                                     </td>
 
+                                    {/* COLUMNA 3: Proveedor, Finanzas y PO */}
                                     <td className="px-6 py-4">
-                                        <p className="text-sm font-bold">{p.proveedorNombre}</p>
-                                        <p className="text-xs text-muted-foreground mt-1"><span className="font-bold text-orange-600">PO:</span> {p.po_proveedor || '-'}</p>
-                                        <p className="text-xs text-muted-foreground"><span className="font-bold text-orange-600">Fac:</span> {p.foliosProv}</p>
-                                    </td>
-
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col space-y-1">
+                                        <div className="flex flex-col space-y-1 mb-2 border-b border-border pb-2">
+                                            <p className="text-[11px] font-bold text-muted-foreground uppercase">Cliente</p>
                                             <p className="text-sm font-black text-green-600">Venta: ${(p.precio_cotizacion_cliente || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+                                            <p className="text-xs text-muted-foreground"><span className="font-bold text-blue-600">PO:</span> {p.po_cliente_ref || 'Pendiente'}</p>
+                                        </div>
+                                        <div className="flex flex-col space-y-1">
+                                            <p className="text-[11px] font-bold text-muted-foreground uppercase">{p.proveedorNombre}</p>
                                             <p className="text-xs font-bold text-destructive">Costo: ${(p.costo_proveedor || 0).toLocaleString('es-MX', {minimumFractionDigits: 2})}</p>
+                                            <p className="text-xs text-muted-foreground"><span className="font-bold text-orange-600">PO:</span> {p.po_proveedor || '-'}</p>
                                         </div>
                                     </td>
 
+                                    {/* COLUMNA 4: Notas de Apertura */}
+                                    <td className="px-6 py-4">
+                                        <p className="text-xs text-muted-foreground italic max-w-[200px] break-words">
+                                            {p.comentarios_apertura || "Sin notas."}
+                                        </p>
+                                    </td>
+
+                                    {/* COLUMNA 5: Entregable */}
                                     <td className="px-6 py-4 text-center">
                                         {p.url_pdf_cliente ? (
                                             <a 
@@ -185,7 +210,7 @@ export const HistorialProyectosTable = () => {
                                                 Abrir Expediente
                                             </a>
                                         ) : (
-                                            <span className="text-xs text-muted-foreground italic">Sin documento final</span>
+                                            <span className="text-xs text-muted-foreground italic">Sin documento</span>
                                         )}
                                     </td>
                                 </tr>

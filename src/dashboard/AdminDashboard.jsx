@@ -21,9 +21,15 @@ const AdminDashboard = ({ selectedRole }) => {
     const refreshData = async () => {
         setLoading(true);
         try {
+            // Filtro de 2 años (Cotizaciones que podrían revivir o proyectos en curso)
+            const currentYear = new Date().getFullYear();
+            const startDate = `${currentYear - 2}-01-01`; 
+
+            // Limpiamos la consulta ajustándola a las nuevas relaciones de Planta
             const { data, error } = await supabase
                 .from('proyectos_v2')
-                .select('*, clientes:usuarios(nombre), servicios(nombre_servicio, servicio_id_numerico), plantas(nombre_planta, planta_id_numerico), proveedores(nombre_proveedor, proveedor_id_numerico)')
+                .select('*, plantas(nombre_planta), servicios(nombre_servicio), proveedores(nombre_proveedor)')
+                .gte('fecha_apertura', startDate)
                 .order('fecha_apertura', { ascending: false });
             
             if (error) throw error;
@@ -45,7 +51,7 @@ const AdminDashboard = ({ selectedRole }) => {
                 {/* BARRA DE NAVEGACIÓN SUPERIOR */}
                 <div className="mb-6 border-b border-border">
                     <nav className="-mb-px flex space-x-8 overflow-x-auto" aria-label="Tabs">
-                        <button onClick={() => setView('projects')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-colors ${view === 'projects' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Proyectos</button>
+                        <button onClick={() => setView('projects')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-colors ${view === 'projects' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Proyectos Activos</button>
                         <button onClick={() => setView('users')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-colors ${view === 'users' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Clientes</button>
                         <button onClick={() => setView('plantas')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-colors ${view === 'plantas' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Plantas</button>
                         <button onClick={() => setView('services')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-colors ${view === 'services' ? 'border-accent text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>Servicios</button>
@@ -58,7 +64,7 @@ const AdminDashboard = ({ selectedRole }) => {
                 {view === 'projects' && (
                     <div className="animate-in fade-in duration-300">
                         <NewProjectForm onProjectAdded={refreshData} />
-                        <h2 className="text-2xl font-bold text-foreground my-6">Todos los Proyectos</h2>
+                        <h2 className="text-2xl font-bold text-foreground my-6">Proyectos y Cotizaciones (Últimos 2 años)</h2>
                         {loading ? <p className="animate-pulse text-muted-foreground">Cargando tabla...</p> : 
                             <ProjectsTable 
                                 projects={projects} 

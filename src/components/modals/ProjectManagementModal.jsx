@@ -3,7 +3,6 @@ import { supabase } from '../../../supabase/client';
 import { toast } from 'sonner';
 
 export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole }) => {
-    // Inicializamos el formulario con los datos relacionales
     const [formData, setFormData] = useState({
         prioridad: project.prioridad || "1 - Normal",
         fecha_entrega_interna: project.fecha_entrega_interna ? project.fecha_entrega_interna.split('T')[0] : '',
@@ -13,41 +12,72 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
         cotizacion_cliente_ref: project.cotizacion_cliente_ref || '',
         po_cliente_ref: project.po_cliente_ref || '',
         cotizacion_proveedor_ref: project.cotizacion_proveedor_ref || '',
+        po_proveedor: project.po_proveedor || '',
+        url_cotizacion_cliente: project.url_cotizacion_cliente || '',
+        url_po_cliente: project.url_po_cliente || '',
+        url_cotizacion_proveedor: project.url_cotizacion_proveedor || '',
+        url_po_proveedor: project.url_po_proveedor || ''
     });
     
     const [loading, setLoading] = useState(false);
+    const [uploadingDoc, setUploadingDoc] = useState(null); 
     const [logEntries, setLogEntries] = useState([]);
     const [loadingLogs, setLoadingLogs] = useState(true);
-
-    // Estado especial para la reactivación
     const [motivoReactivacion, setMotivoReactivacion] = useState('');
 
-    const esProyectoCompletado = project.estado === 'completado';
+    const esProyectoCompletado = project.estado?.toLowerCase() === 'completado' || project.estado?.toLowerCase() === 'terminado';
 
-    // Cargar bitácoras desde SQL (ACTUALIZADO CON LAS COLUMNAS DE HOY)
     useEffect(() => {
-        const fetchLogs = async () => {
-            setLoadingLogs(true);
-            const { data, error } = await supabase
-                .from('bitacoras_proyectos')
-                .select('*, usuarios(nombre)')
-                .eq('proyecto_id', project.id)
-                .order('creado_en', { ascending: false });
-            
-            if (!error && data) setLogEntries(data);
-            setLoadingLogs(false);
-        };
-        fetchLogs();
-    }, [project.id]);
+        if (userRole === 'supervisor') {
+            const fetchLogs = async () => {
+                setLoadingLogs(true);
+                const { data, error } = await supabase
+                    .from('bitacoras_proyectos')
+                    .select('*, usuarios(nombre)')
+                    .eq('proyecto_id', project.id)
+                    .order('creado_en', { ascending: false });
+                
+                if (!error && data) setLogEntries(data);
+                setLoadingLogs(false);
+            };
+            fetchLogs();
+        }
+    }, [project.id, userRole]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    // ==========================================
-    // LÓGICA DE GUARDADO NORMAL
-    // ==========================================
+    const handleFileUpload = async (e, fieldName) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploadingDoc(fieldName);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${project.npu}_${fieldName}_${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('documentos_proyectos')
+                .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicUrlData } = supabase.storage
+                .from('documentos_proyectos')
+                .getPublicUrl(fileName);
+
+            setFormData(prev => ({ ...prev, [fieldName]: publicUrlData.publicUrl }));
+            toast.success('Documento subido con éxito');
+        } catch (error) {
+            console.error(error);
+            toast.error('Error al subir el documento PDF');
+        } finally {
+            setUploadingDoc(null);
+        }
+    };
+
     const handleSave = async () => {
         setLoading(true);
         const updatePayload = {};
@@ -62,10 +92,15 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
             updatePayload.cotizacion_cliente_ref = formData.cotizacion_cliente_ref;
             updatePayload.po_cliente_ref = formData.po_cliente_ref;
             updatePayload.cotizacion_proveedor_ref = formData.cotizacion_proveedor_ref;
+            updatePayload.po_proveedor = formData.po_proveedor;
+            
+            updatePayload.url_cotizacion_cliente = formData.url_cotizacion_cliente;
+            updatePayload.url_po_cliente = formData.url_po_cliente;
+            updatePayload.url_cotizacion_proveedor = formData.url_cotizacion_proveedor;
+            updatePayload.url_po_proveedor = formData.url_po_proveedor;
 
-            // Lógica Inteligente de Activación:
-            if ((project.estado || '').toLowerCase() === 'cotizacion' && formData.po_cliente_ref && formData.po_cliente_ref.trim() !== '') {
-                updatePayload.estado = 'activo';
+            if ((project.estado || '').toLowerCase() === 'cotización' && formData.po_cliente_ref && formData.po_cliente_ref.trim() !== '') {
+                updatePayload.estado = 'Activo';
                 if (!project.fecha_activacion) {
                     updatePayload.fecha_activacion = new Date().toISOString();
                 }
@@ -93,9 +128,6 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
         }
     };
 
-    // ==========================================
-    // LÓGICA DE REACTIVACIÓN (Solo Admin)
-    // ==========================================
     const handleReactivar = async () => {
         if (!motivoReactivacion.trim()) return toast.error("Escribe el motivo de la reactivación.");
         setLoading(true);
@@ -106,11 +138,11 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
             const { error } = await supabase
                 .from('proyectos_v2')
                 .update({
-                    estado: 'activo', 
+                    estado: 'Activo', 
                     estado_dependencia: 'Pendiente', 
                     notas_supervisor: nuevasInstrucciones,
                     es_entrega_preliminar: false, 
-                    esperando_acuse: false // Reiniciamos esta bandera también
+                    esperando_acuse: false
                 })
                 .eq('id', project.id);
 
@@ -127,20 +159,42 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
         }
     };
 
+    const renderDocUpload = (fieldName) => (
+        <div className="mt-2 flex items-center justify-between bg-muted/20 p-2 rounded-md border border-border animate-in fade-in">
+            {formData[fieldName] ? (
+                <a href={formData[fieldName]} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline">
+                    Ver Archivo Adjunto
+                </a>
+            ) : (
+                <span className="text-[11px] text-muted-foreground italic">Falta PDF</span>
+            )}
+            
+            <label className={`cursor-pointer px-2 py-1 rounded text-[11px] font-bold transition-colors shadow-sm ${uploadingDoc === fieldName ? 'bg-muted text-muted-foreground' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}>
+                {uploadingDoc === fieldName ? 'Subiendo...' : (formData[fieldName] ? 'Reemplazar' : 'Subir PDF')}
+                <input 
+                    type="file" 
+                    accept=".pdf" 
+                    className="hidden" 
+                    onChange={(e) => handleFileUpload(e, fieldName)}
+                    disabled={uploadingDoc === fieldName}
+                />
+            </label>
+        </div>
+    );
+
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[100] p-4">
-            <div className="bg-card p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-border">
-                <div className="flex justify-between items-start mb-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-[100] p-4 animate-in fade-in duration-200">
+            <div className="bg-card p-6 rounded-2xl shadow-xl w-full max-w-2xl border border-border flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-start mb-4 border-b border-border pb-4">
                     <div>
                         <h3 className="text-xl font-bold text-primary">Gestionar Proyecto</h3>
                         <p className="text-accent font-bold text-sm">NPU: {project.npu}</p>
                     </div>
-                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-xl">&times;</button>
+                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-2xl leading-none">&times;</button>
                 </div>
                 
-                <div className="space-y-5 max-h-[65vh] overflow-y-auto pr-2">
+                <div className="space-y-5 overflow-y-auto pr-2 flex-1">
                     
-                    {/* SI ES UN PROYECTO COMPLETADO Y ES ADMIN -> VISTA DE REACTIVACIÓN */}
                     {esProyectoCompletado && userRole === 'administrador' ? (
                         <div className="bg-destructive/10 border border-destructive/20 p-5 rounded-xl space-y-4">
                             <h4 className="font-bold text-destructive text-lg">Este proyecto está completado y cerrado.</h4>
@@ -158,7 +212,6 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                             </div>
                         </div>
                     ) : (
-                        /* VISTA NORMAL (EDICIÓN Y GESTIÓN) */
                         <>
                             {userRole === 'supervisor' && (
                                 <div className="space-y-4">
@@ -179,6 +232,21 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                                     <div>
                                         <label className="block text-sm font-bold mb-1">Notas/Instrucciones del Supervisor</label>
                                         <textarea name="notas_supervisor" value={formData.notas_supervisor} onChange={handleChange} rows="3" className="w-full p-2 border border-border rounded-md bg-background"></textarea>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-border mt-6">
+                                        <label className="block text-sm font-bold mb-2 text-primary">Historial de Bitácoras (Técnico)</label>
+                                        <div className="bg-muted/20 border border-border rounded-lg p-4 h-48 overflow-y-auto space-y-3">
+                                            {loadingLogs ? <p className="text-sm text-muted-foreground animate-pulse">Cargando bitácora...</p> : 
+                                                logEntries.length > 0 ? logEntries.map(entry => (
+                                                <div key={entry.id} className="text-sm bg-background border border-border p-3 rounded-lg shadow-sm">
+                                                    <p className="text-foreground whitespace-pre-wrap font-medium">{entry.mensaje}</p>
+                                                    <p className="text-muted-foreground mt-2 text-xs font-bold text-right border-t border-border pt-1">
+                                                        {entry.usuarios?.nombre} - {new Date(entry.creado_en).toLocaleString('es-MX')}
+                                                    </p>
+                                                </div>
+                                            )) : <p className="text-sm text-muted-foreground text-center pt-4">El técnico aún no ha reportado avances.</p>}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -202,50 +270,46 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                                         {(!project.po_cliente_ref && formData.po_cliente_ref) && (
                                             <p className="text-xs text-accent mt-2 font-bold">⚠️ Al guardar, este proyecto pasará a estado Activo.</p>
                                         )}
+                                        {/* Render Condicional PO Cliente */}
+                                        {formData.po_cliente_ref?.trim() && renderDocUpload('url_po_cliente')}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-1 gap-4">
                                         <div>
                                             <label className="block text-xs font-bold mb-1 text-muted-foreground">Ref. Cotización Cliente</label>
                                             <input type="text" name="cotizacion_cliente_ref" value={formData.cotizacion_cliente_ref} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
+                                            {/* Render Condicional Cotización Cliente */}
+                                            {formData.cotizacion_cliente_ref?.trim() && renderDocUpload('url_cotizacion_cliente')}
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold mb-1 text-muted-foreground">Ref. Cotización Proveedor</label>
                                             <input type="text" name="cotizacion_proveedor_ref" value={formData.cotizacion_proveedor_ref} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
+                                            {/* Render Condicional Cotización Proveedor */}
+                                            {formData.cotizacion_proveedor_ref?.trim() && renderDocUpload('url_cotizacion_proveedor')}
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold mb-1 text-muted-foreground">Orden de Compra (PO) Proveedor</label>
+                                            <input type="text" name="po_proveedor" value={formData.po_proveedor} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
+                                            {/* Render Condicional PO Proveedor */}
+                                            {formData.po_proveedor?.trim() && renderDocUpload('url_po_proveedor')}
                                         </div>
                                     </div>
                                 </div>
                             )}
-
-                            {/* Visor de Bitácoras del Técnico */}
-                            <div className="pt-4 border-t border-border mt-6">
-                                <label className="block text-sm font-bold mb-2 text-primary">Historial de Bitácoras (Técnico)</label>
-                                <div className="bg-muted/20 border border-border rounded-lg p-4 h-48 overflow-y-auto space-y-3">
-                                    {loadingLogs ? <p className="text-sm text-muted-foreground animate-pulse">Cargando bitácora...</p> : 
-                                        logEntries.length > 0 ? logEntries.map(entry => (
-                                        <div key={entry.id} className="text-sm bg-background border border-border p-3 rounded-lg shadow-sm">
-                                            <p className="text-foreground whitespace-pre-wrap font-medium">{entry.mensaje}</p>
-                                            <p className="text-muted-foreground mt-2 text-xs font-bold text-right border-t border-border pt-1">
-                                                {entry.usuarios?.nombre} - {new Date(entry.creado_en).toLocaleString('es-MX')}
-                                            </p>
-                                        </div>
-                                    )) : <p className="text-sm text-muted-foreground text-center pt-4">El técnico aún no ha reportado avances.</p>}
-                                </div>
-                            </div>
                         </>
                     )}
                 </div>
 
-                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+                <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-border bg-card">
                     <button onClick={onClose} className="px-5 py-2 rounded-lg font-bold text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
                     
                     {esProyectoCompletado && userRole === 'administrador' ? (
-                        <button onClick={handleReactivar} disabled={loading} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md">
+                        <button onClick={handleReactivar} disabled={loading || uploadingDoc} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md disabled:opacity-50">
                             {loading ? 'Reactivando...' : 'Reactivar Proyecto'}
                         </button>
                     ) : (
-                        <button onClick={handleSave} disabled={loading} className="bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md">
-                            {loading ? 'Guardando...' : 'Guardar Cambios'}
+                        <button onClick={handleSave} disabled={loading || uploadingDoc} className="bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md disabled:opacity-50">
+                            {loading || uploadingDoc ? 'Procesando...' : 'Guardar Cambios'}
                         </button>
                     )}
                 </div>

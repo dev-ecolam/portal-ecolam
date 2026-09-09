@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../supabase/client';
+import { supabase } from '../../supabase/client';
 import { toast } from 'sonner';
-import TechnicianHealthCard from '@/components/supervisor/TechnicianHealthCard';
-import AssignProjectModal from '@/components/supervisor/AssignProjectModal';
-import ReviewProjectsTable from '@/components/supervisor/ReviewProjectsTable';
+import { RefreshCw } from 'lucide-react';
 
-// Componentes UI Reutilizables (Asegúrate de que las rutas coincidan con tu estructura)
-import { ProjectManagementModal } from '../components/ui/ProjectManagementModal';
-import { ConfirmationModal } from '../components/ui/ConfirmationModal';
-import { ActionWithReasonModal } from '../components/ui/ActionWithReasonModal';
+// Importaciones con rutas relativas correctas
+import TechnicianHealthCard from '../components/supervisor/TechnicianHealthCard';
+import AssignProjectModal from '../components/supervisor/AssignProjectModal';
+import ReviewProjectsTable from '../components/supervisor/ReviewProjectsTable';
+import { ProjectManagementModal } from '../components/modals/ProjectManagementModal'; // <- IMPORTACIÓN CON LLAVES CORREGIDA
 import { ProjectsTable } from '../components/shared/ProjectsTable';
 import DashboardLayout from '../components/layout/DashboardLayout';
+import PendingAssignTable from '../components/supervisor/PendingAssignTable';
 
 const SupervisorDashboard = () => {
     const [view, setView] = useState('new');
@@ -27,29 +27,38 @@ const SupervisorDashboard = () => {
         setLoading(true);
         try {
             // 1. Traer proyectos (Excluimos cotizaciones y archivados)
-            const { data: projects } = await supabase
+            const { data: projects, error: projectsError } = await supabase
                 .from('proyectos_v2')
-                .select('*, clientes(nombre_empresa), servicios(nombre_servicio)')
+                .select('*, plantas(nombre_planta), servicios(nombre_servicio)')
                 .not('estado', 'in', '("cotizacion", "archivado")')
                 .order('fecha_apertura', { ascending: false });
 
+            if (projectsError) throw projectsError;
+
             // 2. Traer técnicos activos
-            const { data: techs } = await supabase
+            const { data: techs, error: techsError } = await supabase
                 .from('usuarios')
                 .select('*')
-                .eq('activo', true)
+                .eq('estado_empleado', 'Activo')
                 .or('rol.eq.tecnico,roles.cs.{"tecnico"}');
 
-            // 3. Traer solicitudes de vacaciones (Si ya tienes la tabla)
-            const { data: vacations } = await supabase
+            if (techsError) throw techsError;
+
+            // 3. Traer solicitudes de vacaciones (Manejo seguro sin .catch)
+            let vacations = [];
+            const { data: vacData, error: vacError } = await supabase
                 .from('solicitudes_vacaciones')
                 .select('*')
-                .eq('estado', 'pendiente_supervisor')
-                .catch(() => ({ data: [] })); // Por si aún no creas la tabla
+                .eq('estado', 'pendiente_supervisor');
+                
+            // Si no hay error (es decir, si la tabla existe), guardamos los datos
+            if (!vacError && vacData) {
+                vacations = vacData;
+            }
 
             setAllProjects(projects || []);
             setTechnicians(techs || []);
-            setVacationRequests(vacations || []);
+            setVacationRequests(vacations);
         } catch (err) {
             console.error("Error fetching supervisor data:", err);
             toast.error("Error al cargar los datos del dashboard.");
@@ -99,7 +108,7 @@ const SupervisorDashboard = () => {
 
             techProjects.forEach(p => {
                 if (!p.fecha_entrega_interna) {
-                    aTiempo++; // Si no tiene fecha, no está atrasado
+                    aTiempo++; 
                     return;
                 }
                 const deadline = new Date(p.fecha_entrega_interna);
@@ -112,7 +121,6 @@ const SupervisorDashboard = () => {
                 else aTiempo++;
             });
 
-            // Contar los terminados este año
             const terminadosEsteAno = allProjects.filter(p => 
                 p.tecnico_id === tech.id && 
                 p.estado === 'terminado' &&
@@ -137,7 +145,8 @@ const SupervisorDashboard = () => {
         <DashboardLayout>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-primary">Panel de Supervisión</h1>
-                <button onClick={fetchData} className="text-sm font-medium text-accent hover:underline">
+                <button onClick={fetchData} className="flex items-center gap-2 text-sm font-bold text-accent hover:text-accent/80 transition-colors">
+                    <RefreshCw className="w-4 h-4" />
                     Actualizar Datos
                 </button>
             </div>
@@ -185,11 +194,9 @@ const SupervisorDashboard = () => {
                         {view === 'new' && (
                             <div className="p-4">
                                 <h3 className="text-xl font-bold mb-4">Proyectos Pendientes de Asignación</h3>
-                                <ProjectsTable 
+                                <PendingAssignTable 
                                     projects={processedData.newProjects} 
-                                    userRole="supervisor" 
-                                    supervisorView="new" 
-                                    onAssignClick={setAssignModalProject} 
+                                    onAssign={setAssignModalProject} 
                                 />
                             </div>
                         )}
@@ -204,7 +211,6 @@ const SupervisorDashboard = () => {
                         {view === 'vacations' && (
                             <div className="p-4">
                                 <h3 className="text-xl font-bold mb-4">Gestión de Vacaciones</h3>
-                                {/* <VacationRequestsTable requests={vacationRequests} viewerRole="supervisor" onActionComplete={fetchData} /> */}
                                 <p className="text-muted-foreground">Módulo de vacaciones en construcción.</p>
                             </div>
                         )}

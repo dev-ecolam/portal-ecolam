@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { Calendar } from 'lucide-react';
 
-export const TechnicianHealthCard = ({ techData }) => {
+const TechnicianHealthCard = ({ techData }) => {
     const { id, nombre, proyectosActivos, aTiempo, porVencer, atrasados } = techData;
     const [eventosHoy, setEventosHoy] = useState([]);
 
@@ -63,3 +63,5 @@ export const TechnicianHealthCard = ({ techData }) => {
         </div>
     );
 };
+
+export default TechnicianHealthCard;

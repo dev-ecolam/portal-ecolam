@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../supabase/client';
 import { Alert } from '../ui/UIComponents'; 
 import { toast } from 'sonner';
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 // ==============================================================================
 // COMPONENTE: Menú Desplegable con Buscador (Autocomplete)
@@ -12,18 +12,15 @@ const SearchableSelect = ({ options, value, onChange, placeholder, displayKey, v
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef(null);
 
-    // Sincronizar el texto mostrado con el valor real seleccionado
     useEffect(() => {
         const selected = options.find(opt => opt[valueKey] === value);
         setSearchTerm(selected ? selected[displayKey] : '');
     }, [value, options, displayKey, valueKey]);
 
-    // Cerrar al hacer clic fuera
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
                 setIsOpen(false);
-                // Si hizo clic fuera y no había seleccionado nada válido, regresar al valor previo
                 const selected = options.find(opt => opt[valueKey] === value);
                 setSearchTerm(selected ? selected[displayKey] : '');
             }
@@ -47,7 +44,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, displayKey, v
                     onChange={(e) => {
                         setSearchTerm(e.target.value);
                         setIsOpen(true);
-                        onChange(''); // Borra el ID real mientras el usuario escribe
+                        onChange(''); 
                     }}
                     onFocus={() => setIsOpen(true)}
                 />
@@ -91,10 +88,13 @@ const NewProjectForm = ({ onProjectAdded }) => {
         planta_id: '', servicio_id: '', proveedor_id: '', comentarios_apertura: '',
         fecha_apertura: new Date().toISOString().split('T')[0],
         precio_cotizacion_cliente: '', costo_proveedor: '', cotizacion_cliente_ref: '', 
-        po_cliente_ref: '', cotizacion_proveedor_ref: ''
+        po_cliente_ref: '', cotizacion_proveedor_ref: '', po_proveedor: '',
+        // Campos para URLs de PDF
+        url_cotizacion_cliente: '', url_po_cliente: '', url_cotizacion_proveedor: '', url_po_proveedor: ''
     });
     
     const [loading, setLoading] = useState(false);
+    const [uploadingDoc, setUploadingDoc] = useState(null);
     const [error, setError] = useState('');
 
     useEffect(() => {
@@ -118,6 +118,52 @@ const NewProjectForm = ({ onProjectAdded }) => {
         fetchDropdowns();
     }, []);
 
+    const handleFileUpload = async (e, fieldName) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploadingDoc(fieldName);
+        try {
+            const fileExt = file.name.split('.').pop();
+            // Como no tenemos NPU aún, usamos un identificador temporal seguro
+            const fileName = `pre_apertura_${fieldName}_${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('documentos_proyectos')
+                .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicUrlData } = supabase.storage
+                .from('documentos_proyectos')
+                .getPublicUrl(fileName);
+
+            setFormData(prev => ({ ...prev, [fieldName]: publicUrlData.publicUrl }));
+            toast.success('Documento adjuntado listo para guardar');
+        } catch (error) {
+            console.error(error);
+            toast.error('Error al subir el documento PDF');
+        } finally {
+            setUploadingDoc(null);
+        }
+    };
+
+    const renderDocUpload = (fieldName) => (
+        <div className="mt-2 flex items-center justify-between bg-muted/30 p-2 rounded-md border border-border animate-in fade-in">
+            {formData[fieldName] ? (
+                <a href={formData[fieldName]} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-blue-600 hover:underline">
+                    Ver Archivo Adjunto
+                </a>
+            ) : (
+                <span className="text-[11px] text-muted-foreground italic">Falta PDF de respaldo</span>
+            )}
+            <label className={`cursor-pointer px-2 py-1 rounded text-[11px] font-bold transition-colors shadow-sm ${uploadingDoc === fieldName ? 'bg-muted text-muted-foreground' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}>
+                {uploadingDoc === fieldName ? 'Subiendo...' : (formData[fieldName] ? 'Reemplazar' : 'Adjuntar PDF')}
+                <input type="file" accept=".pdf" className="hidden" onChange={(e) => handleFileUpload(e, fieldName)} disabled={uploadingDoc === fieldName} />
+            </label>
+        </div>
+    );
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true); 
@@ -129,51 +175,45 @@ const NewProjectForm = ({ onProjectAdded }) => {
             const proveedor = collections.proveedores.find(p => p.id === formData.proveedor_id);
 
             if (!planta || !servicio || !proveedor) {
-                throw new Error("Por favor, selecciona opciones válidas del catálogo para Planta, Servicio y Proveedor.");
+                throw new Error("Por favor, selecciona opciones válidas del catálogo.");
             }
 
-            // 1. Deducción automática del Cliente basado en la Planta seleccionada
             let deducedClienteId = null;
-            const { data: clienteData, error: clienteError } = await supabase
+            const { data: clienteData } = await supabase
                 .from('usuarios')
                 .select('id')
                 .eq('rol', 'cliente')
                 .eq('estado_empleado', 'Activo')
                 .contains('plantasAsociadas', `[{"id": "${formData.planta_id}"}]`)
-                .maybeSingle(); // maybeSingle para no lanzar error crítico si ninguna persona tiene la planta
+                .maybeSingle();
 
-            if (clienteData) {
-                deducedClienteId = clienteData.id;
-            }
+            if (clienteData) deducedClienteId = clienteData.id;
 
-            // 2. Generar el NPU (Ahora sin ID del cliente)
             const anioActual = new Date(formData.fecha_apertura).getFullYear();
-            let { data: contadorData, error: countError } = await supabase.from('contadores_npu').select('*').eq('anio', anioActual).single();
+            let { data: contadorData, error: countError } = await supabase.from('contadores_npu').select('*').eq('anio', anioActual).maybeSingle(); 
             
             let consecutivoActual = 1;
-            if (countError && countError.code === 'PGRST116') {
+            if (!contadorData) {
                 await supabase.from('contadores_npu').insert([{ anio: anioActual, consecutivo: 1 }]);
-            } else if (contadorData) {
+            } else {
                 consecutivoActual = contadorData.consecutivo + 1;
                 await supabase.from('contadores_npu').update({ consecutivo: consecutivoActual }).eq('anio', anioActual);
             }
 
             const consecutivoFormateado = consecutivoActual.toString().padStart(3, '0');
             const ultimosDos = anioActual.toString().slice(-2);
-            // NPU: Planta - Servicio - Proveedor - ConsecutivoAnio
             const npu = `${planta.planta_id_numerico}-${servicio.servicio_id_numerico}-${proveedor.proveedor_id_numerico}-${consecutivoFormateado}${ultimosDos}`;
 
-            // 3. Evaluar estado inicial
             const tienePO = formData.po_cliente_ref && formData.po_cliente_ref.trim() !== '';
             const estadoInicial = tienePO ? 'Activo' : 'Cotización';
             const fechaDeActivacion = tienePO ? formData.fecha_apertura : null;
 
-            // 4. Insertar Proyecto
             const { error: insertError } = await supabase.from('proyectos_v2').insert([{
-                cliente_id: deducedClienteId, // Deducción automática
+                cliente_id: deducedClienteId,
                 planta_id: formData.planta_id,
                 servicio_id: formData.servicio_id,
                 proveedor_id: formData.proveedor_id,
+                nombre_estudio: servicio.nombre_servicio,
                 npu: npu,
                 estado: estadoInicial,
                 fecha_apertura: formData.fecha_apertura,
@@ -183,19 +223,25 @@ const NewProjectForm = ({ onProjectAdded }) => {
                 cotizacion_cliente_ref: formData.cotizacion_cliente_ref,
                 po_cliente_ref: formData.po_cliente_ref,
                 cotizacion_proveedor_ref: formData.cotizacion_proveedor_ref,
+                po_proveedor: formData.po_proveedor,
+                url_cotizacion_cliente: formData.url_cotizacion_cliente,
+                url_po_cliente: formData.url_po_cliente,
+                url_cotizacion_proveedor: formData.url_cotizacion_proveedor,
+                url_po_proveedor: formData.url_po_proveedor,
                 comentarios_apertura: formData.comentarios_apertura
             }]);
 
             if (insertError) throw insertError;
             
-            toast.success(`Proyecto/Cotización creado con NPU: ${npu}`);
+            toast.success(`Proyecto creado con NPU: ${npu}`);
             
             formRef.current.reset();
             setFormData({
                 planta_id: '', servicio_id: '', proveedor_id: '', comentarios_apertura: '',
                 fecha_apertura: new Date().toISOString().split('T')[0],
                 precio_cotizacion_cliente: '', costo_proveedor: '', cotizacion_cliente_ref: '', 
-                po_cliente_ref: '', cotizacion_proveedor_ref: ''
+                po_cliente_ref: '', cotizacion_proveedor_ref: '', po_proveedor: '',
+                url_cotizacion_cliente: '', url_po_cliente: '', url_cotizacion_proveedor: '', url_po_proveedor: ''
             });
             
             if(onProjectAdded) onProjectAdded();
@@ -215,7 +261,7 @@ const NewProjectForm = ({ onProjectAdded }) => {
             
             <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
                 
-                {/* FILA 1: FECHA Y CATÁLOGOS CON BUSCADOR (SIN CLIENTE) */}
+                {/* FILA 1: FECHA Y CATÁLOGOS CON BUSCADOR */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-muted/20 p-5 rounded-xl border border-border">
                     <div>
                         <label className="block text-[11px] font-bold text-muted-foreground mb-1 uppercase">Fecha (Apertura)</label>
@@ -247,9 +293,8 @@ const NewProjectForm = ({ onProjectAdded }) => {
                     </div>
                 </div>
 
-                {/* FILA 2: DATOS FINANCIEROS Y REFERENCIAS */}
+                {/* FILA 2: DATOS FINANCIEROS Y REFERENCIAS CONDICIONALES */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Bloque Cliente */}
                     <div className="space-y-4 border border-border p-4 rounded-xl bg-card">
                         <h4 className="font-bold text-sm text-foreground uppercase border-b border-border pb-2">Información del Cliente</h4>
                         <div>
@@ -259,15 +304,16 @@ const NewProjectForm = ({ onProjectAdded }) => {
                         <div>
                             <label className="block text-xs text-muted-foreground mb-1">Ref. Cotización Cliente</label>
                             <input type="text" placeholder="Ej: COT-2024-001" value={formData.cotizacion_cliente_ref} onChange={e => setFormData({...formData, cotizacion_cliente_ref: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
+                            {formData.cotizacion_cliente_ref?.trim() && renderDocUpload('url_cotizacion_cliente')}
                         </div>
                         <div className="bg-accent/5 p-4 rounded-lg border border-accent/20">
                             <label className="block text-xs text-primary font-bold mb-1 uppercase">Orden de Compra (PO)</label>
-                            <p className="text-[12px] text-muted-foreground mb-2">Llenarlo activará el proyecto. Déjalo si es una cotización.</p>
+                            <p className="text-[12px] text-muted-foreground mb-2">Llenarlo activará el proyecto. Déjalo vacío si es cotización.</p>
                             <input type="text" placeholder="Nº de PO..." value={formData.po_cliente_ref} onChange={e => setFormData({...formData, po_cliente_ref: e.target.value})} className="w-full p-2 border border-accent/30 rounded-lg bg-background font-mono text-sm focus:ring-1 focus:ring-accent outline-none" />
+                            {formData.po_cliente_ref?.trim() && renderDocUpload('url_po_cliente')}
                         </div>
                     </div>
                     
-                    {/* Bloque Proveedor */}
                     <div className="space-y-4 border border-border p-4 rounded-xl bg-card">
                         <h4 className="font-bold text-sm text-foreground uppercase border-b border-border pb-2">Información del Proveedor</h4>
                         <div>
@@ -277,6 +323,12 @@ const NewProjectForm = ({ onProjectAdded }) => {
                         <div>
                             <label className="block text-xs text-muted-foreground mb-1">Ref. Cotización Proveedor</label>
                             <input type="text" placeholder="Ej: PROV-456" value={formData.cotizacion_proveedor_ref} onChange={e => setFormData({...formData, cotizacion_proveedor_ref: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
+                            {formData.cotizacion_proveedor_ref?.trim() && renderDocUpload('url_cotizacion_proveedor')}
+                        </div>
+                        <div>
+                            <label className="block text-xs text-muted-foreground mb-1">Orden de Compra (PO) Proveedor</label>
+                            <input type="text" placeholder="Ej: PO-PROV-789" value={formData.po_proveedor} onChange={e => setFormData({...formData, po_proveedor: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
+                            {formData.po_proveedor?.trim() && renderDocUpload('url_po_proveedor')}
                         </div>
                         <div>
                             <label className="block text-xs text-muted-foreground mb-1">Comentarios de Apertura (Opcional)</label>
@@ -288,8 +340,8 @@ const NewProjectForm = ({ onProjectAdded }) => {
                 <Alert message={error} type="error" onClose={() => setError('')} />
                 
                 <div className="flex justify-end pt-2 border-t border-border">
-                    <button type="submit" disabled={loading} className="w-full md:w-auto px-8 bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-3 rounded-lg shadow-md transition-all">
-                        {loading ? 'Procesando...' : (formData.po_cliente_ref ? 'Crear y Activar Proyecto' : 'Crear Cotización')}
+                    <button type="submit" disabled={loading || uploadingDoc} className="w-full md:w-auto px-8 bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-3 rounded-lg shadow-md transition-all disabled:opacity-50">
+                        {loading || uploadingDoc ? 'Procesando...' : (formData.po_cliente_ref ? 'Crear y Activar Proyecto' : 'Crear Cotización')}
                     </button>
                 </div>
             </form>
