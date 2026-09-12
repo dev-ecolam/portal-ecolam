@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { Calendar, Clock, MapPin, Phone } from 'lucide-react';
 
 export const AgendaTecnicoPanel = ({ userId, proyectosConProveedores }) => {

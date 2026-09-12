@@ -1,6 +1,6 @@
 // ModalFinalizarEcotech.jsx
 import React, { useState } from 'react';
-import { supabase } from '../../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { toast } from 'sonner';
 
 export const ModalFinalizarEcotech = ({ project, onClose, onFinalized }) => {

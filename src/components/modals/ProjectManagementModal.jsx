@@ -4,15 +4,23 @@ import { toast } from 'sonner';
 
 export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole }) => {
     const [formData, setFormData] = useState({
+        // Compartidos / Supervisor
         prioridad: project.prioridad || "1 - Normal",
         fecha_entrega_interna: project.fecha_entrega_interna ? project.fecha_entrega_interna.split('T')[0] : '',
         notas_supervisor: project.notas_supervisor || '',
+        tecnico_id: project.tecnico_id || '', 
+        
+        // Administrador (Logística y Finanzas)
+        proveedor_id: project.proveedor_id || '',
+        estado: project.estado || 'Cotización',
+        comentarios_apertura: project.comentarios_apertura || '',
         precio_cotizacion_cliente: project.precio_cotizacion_cliente || '',
         costo_proveedor: project.costo_proveedor || '',
         cotizacion_cliente_ref: project.cotizacion_cliente_ref || '',
         po_cliente_ref: project.po_cliente_ref || '',
         cotizacion_proveedor_ref: project.cotizacion_proveedor_ref || '',
-        po_proveedor: project.po_proveedor || '',
+        
+        // Documentos PDF
         url_cotizacion_cliente: project.url_cotizacion_cliente || '',
         url_po_cliente: project.url_po_cliente || '',
         url_cotizacion_proveedor: project.url_cotizacion_proveedor || '',
@@ -20,15 +28,20 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
     });
     
     const [loading, setLoading] = useState(false);
-    const [uploadingDoc, setUploadingDoc] = useState(null); 
+    const [uploadingDoc, setUploadingDoc] = useState(null);
     const [logEntries, setLogEntries] = useState([]);
     const [loadingLogs, setLoadingLogs] = useState(true);
     const [motivoReactivacion, setMotivoReactivacion] = useState('');
+    
+    // Estados nuevos para Supervisor
+    const [activeTechs, setActiveTechs] = useState([]);
+    const [nuevosDias, setNuevosDias] = useState('');
 
     const esProyectoCompletado = project.estado?.toLowerCase() === 'completado' || project.estado?.toLowerCase() === 'terminado';
 
     useEffect(() => {
         if (userRole === 'supervisor') {
+            // 1. Cargar Historial de Bitácoras
             const fetchLogs = async () => {
                 setLoadingLogs(true);
                 const { data, error } = await supabase
@@ -41,6 +54,18 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                 setLoadingLogs(false);
             };
             fetchLogs();
+
+            // 2. Cargar Técnicos Activos para Reasignación
+            supabase.from('usuarios')
+                .select('id, nombre')
+                .eq('estado_empleado', 'Activo')
+                .or('rol.eq.tecnico,roles.cs.{"tecnico"}')
+                .then(({ data }) => setActiveTechs(data || []));
+        }
+        if (userRole === 'administrador') {
+            supabase.from('proveedores')
+                .select('id, nombre')
+                .then(({ data }) => setProveedores(data || []));
         }
     }, [project.id, userRole]);
 
@@ -49,6 +74,7 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    // Subida de archivos al Bucket
     const handleFileUpload = async (e, fieldName) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -86,19 +112,34 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
             updatePayload.prioridad = formData.prioridad;
             updatePayload.fecha_entrega_interna = formData.fecha_entrega_interna || null;
             updatePayload.notas_supervisor = formData.notas_supervisor;
+            
+            // Lógica de Reasignación de Técnico
+            if (formData.tecnico_id !== project.tecnico_id && formData.tecnico_id !== '') {
+                updatePayload.tecnico_id = formData.tecnico_id;
+                updatePayload.dias_asignados_tecnico = parseInt(nuevosDias, 10) || 0;
+                updatePayload.estado_operativo = 'Pendiente';
+            }
+
         } else if (userRole === 'administrador') {
+            // Campos Logísticos
+            updatePayload.proveedor_id = formData.proveedor_id;
+            updatePayload.estado = formData.estado;
+            updatePayload.comentarios_apertura = formData.comentarios_apertura;
+            
+            // Campos Financieros
             updatePayload.precio_cotizacion_cliente = Number(formData.precio_cotizacion_cliente) || 0;
             updatePayload.costo_proveedor = Number(formData.costo_proveedor) || 0;
             updatePayload.cotizacion_cliente_ref = formData.cotizacion_cliente_ref;
             updatePayload.po_cliente_ref = formData.po_cliente_ref;
             updatePayload.cotizacion_proveedor_ref = formData.cotizacion_proveedor_ref;
-            updatePayload.po_proveedor = formData.po_proveedor;
             
+            // URLs de documentos
             updatePayload.url_cotizacion_cliente = formData.url_cotizacion_cliente;
             updatePayload.url_po_cliente = formData.url_po_cliente;
             updatePayload.url_cotizacion_proveedor = formData.url_cotizacion_proveedor;
             updatePayload.url_po_proveedor = formData.url_po_proveedor;
 
+            // Lógica Inteligente de Activación:
             if ((project.estado || '').toLowerCase() === 'cotización' && formData.po_cliente_ref && formData.po_cliente_ref.trim() !== '') {
                 updatePayload.estado = 'Activo';
                 if (!project.fecha_activacion) {
@@ -159,26 +200,30 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
         }
     };
 
-    const renderDocUpload = (fieldName) => (
-        <div className="mt-2 flex items-center justify-between bg-muted/20 p-2 rounded-md border border-border animate-in fade-in">
-            {formData[fieldName] ? (
-                <a href={formData[fieldName]} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline">
-                    Ver Archivo Adjunto
-                </a>
-            ) : (
-                <span className="text-[11px] text-muted-foreground italic">Falta PDF</span>
-            )}
-            
-            <label className={`cursor-pointer px-2 py-1 rounded text-[11px] font-bold transition-colors shadow-sm ${uploadingDoc === fieldName ? 'bg-muted text-muted-foreground' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}>
-                {uploadingDoc === fieldName ? 'Subiendo...' : (formData[fieldName] ? 'Reemplazar' : 'Subir PDF')}
-                <input 
-                    type="file" 
-                    accept=".pdf" 
-                    className="hidden" 
-                    onChange={(e) => handleFileUpload(e, fieldName)}
-                    disabled={uploadingDoc === fieldName}
-                />
-            </label>
+    // Helper para renderizar los campos de subida de PDF
+    const renderDocUpload = (label, fieldName) => (
+        <div className="flex items-center justify-between bg-muted/10 p-3 rounded-lg border border-border">
+            <span className="text-xs font-bold text-muted-foreground uppercase">{label}</span>
+            <div className="flex items-center gap-3">
+                {formData[fieldName] ? (
+                    <a href={formData[fieldName]} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
+                        Ver Archivo
+                    </a>
+                ) : (
+                    <span className="text-xs text-muted-foreground italic">Faltante</span>
+                )}
+                
+                <label className={`cursor-pointer px-3 py-1.5 rounded-md text-xs font-bold transition-colors shadow-sm ${uploadingDoc === fieldName ? 'bg-muted text-muted-foreground' : 'bg-secondary hover:bg-secondary/80 text-secondary-foreground'}`}>
+                    {uploadingDoc === fieldName ? 'Subiendo...' : (formData[fieldName] ? 'Reemplazar' : 'Subir PDF')}
+                    <input 
+                        type="file" 
+                        accept=".pdf" 
+                        className="hidden" 
+                        onChange={(e) => handleFileUpload(e, fieldName)}
+                        disabled={uploadingDoc === fieldName}
+                    />
+                </label>
+            </div>
         </div>
     );
 
@@ -213,25 +258,50 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                         </div>
                     ) : (
                         <>
+                            {/* =======================
+                                VISTA SUPERVISOR
+                            ======================== */}
                             {userRole === 'supervisor' && (
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
-                                            <label className="block text-sm font-bold mb-1">Prioridad</label>
-                                            <select name="prioridad" value={formData.prioridad} onChange={handleChange} className="w-full p-2 border border-border rounded-md bg-background">
+                                            <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Prioridad</label>
+                                            <select name="prioridad" value={formData.prioridad} onChange={handleChange} className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent">
                                                 <option value="1 - Normal">Normal</option>
                                                 <option value="2 - Alta">Alta</option>
                                                 <option value="3 - Urgente">Urgente</option>
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-bold mb-1">Fecha Límite Interna</label>
-                                            <input type="date" name="fecha_entrega_interna" value={formData.fecha_entrega_interna} onChange={handleChange} className="w-full p-2 border border-border rounded-md bg-background"/>
+                                            <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Reasignar Técnico</label>
+                                            <select name="tecnico_id" value={formData.tecnico_id} onChange={handleChange} className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent">
+                                                <option value="">Mantener actual...</option>
+                                                {activeTechs.map(t => (
+                                                    <option key={t.id} value={t.id}>{t.nombre}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {/* Condición para mostrar Días o Fecha Límite */}
+                                        {formData.tecnico_id !== project.tecnico_id && formData.tecnico_id !== '' ? (
+                                            <div className="col-span-2">
+                                                <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase text-accent">Nuevos Días Asignados</label>
+                                                <input type="number" value={nuevosDias} onChange={e => setNuevosDias(e.target.value)} placeholder="Ej. 3" className="w-full p-2.5 border border-accent/50 rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent"/>
+                                                <p className="text-[10px] text-muted-foreground mt-1">El rendimiento del técnico anterior no afectará al nuevo.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="col-span-2">
+                                                <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Modificar Fecha Límite Interna</label>
+                                                <input type="date" name="fecha_entrega_interna" value={formData.fecha_entrega_interna} onChange={handleChange} className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent"/>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div>
-                                        <label className="block text-sm font-bold mb-1">Notas/Instrucciones del Supervisor</label>
-                                        <textarea name="notas_supervisor" value={formData.notas_supervisor} onChange={handleChange} rows="3" className="w-full p-2 border border-border rounded-md bg-background"></textarea>
+                                        <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Notas/Instrucciones del Supervisor</label>
+                                        <textarea name="notas_supervisor" value={formData.notas_supervisor} onChange={handleChange} rows="3" className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent"></textarea>
                                     </div>
 
                                     <div className="pt-4 border-t border-border mt-6">
@@ -251,48 +321,49 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                                 </div>
                             )}
 
+                            {/* =======================
+                                VISTA ADMINISTRADOR
+                            ======================== */}
                             {userRole === 'administrador' && (
                                 <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
+
+                                    <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
                                         <div>
                                             <label className="block text-xs font-bold mb-1 text-muted-foreground">Precio Cliente (con IVA)</label>
-                                            <input type="number" name="precio_cotizacion_cliente" value={formData.precio_cotizacion_cliente} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
+                                            <input type="number" name="precio_cotizacion_cliente" value={formData.precio_cotizacion_cliente} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"/>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold mb-1 text-muted-foreground">Costo Proveedor</label>
-                                            <input type="number" name="costo_proveedor" value={formData.costo_proveedor} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
+                                            <input type="number" name="costo_proveedor" value={formData.costo_proveedor} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"/>
                                         </div>
                                     </div>
                                     
                                     <div className="bg-accent/5 p-4 rounded-lg border border-accent/20">
                                         <label className="block text-sm font-bold text-accent mb-2">Orden de Compra (PO Cliente)</label>
-                                        <input type="text" name="po_cliente_ref" value={formData.po_cliente_ref} onChange={handleChange} placeholder="Ej. PO-998273" className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
+                                        <input type="text" name="po_cliente_ref" value={formData.po_cliente_ref} onChange={handleChange} placeholder="Ej. PO-998273" className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"/>
                                         {(!project.po_cliente_ref && formData.po_cliente_ref) && (
-                                            <p className="text-xs text-accent mt-2 font-bold">⚠️ Al guardar, este proyecto pasará a estado Activo.</p>
+                                            <p className="text-xs text-accent mt-2 font-bold"> Este proyecto pasará a estado Activo.</p>
                                         )}
-                                        {/* Render Condicional PO Cliente */}
-                                        {formData.po_cliente_ref?.trim() && renderDocUpload('url_po_cliente')}
                                     </div>
 
-                                    <div className="grid grid-cols-1 gap-4">
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-bold mb-1 text-muted-foreground">Ref. Cotización Cliente</label>
-                                            <input type="text" name="cotizacion_cliente_ref" value={formData.cotizacion_cliente_ref} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
-                                            {/* Render Condicional Cotización Cliente */}
-                                            {formData.cotizacion_cliente_ref?.trim() && renderDocUpload('url_cotizacion_cliente')}
+                                            <input type="text" name="cotizacion_cliente_ref" value={formData.cotizacion_cliente_ref} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"/>
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold mb-1 text-muted-foreground">Ref. Cotización Proveedor</label>
-                                            <input type="text" name="cotizacion_proveedor_ref" value={formData.cotizacion_proveedor_ref} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
-                                            {/* Render Condicional Cotización Proveedor */}
-                                            {formData.cotizacion_proveedor_ref?.trim() && renderDocUpload('url_cotizacion_proveedor')}
+                                            <input type="text" name="cotizacion_proveedor_ref" value={formData.cotizacion_proveedor_ref} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm"/>
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-bold mb-1 text-muted-foreground">Orden de Compra (PO) Proveedor</label>
-                                            <input type="text" name="po_proveedor" value={formData.po_proveedor} onChange={handleChange} className="w-full px-3 py-2 border border-border rounded-md bg-background"/>
-                                            {/* Render Condicional PO Proveedor */}
-                                            {formData.po_proveedor?.trim() && renderDocUpload('url_po_proveedor')}
-                                        </div>
+                                    </div>
+
+                                    {/* MÓDULO DE SUBIDA DE PDFS */}
+                                    <div className="space-y-3 mt-6 border-t border-border pt-4">
+                                        <h4 className="font-bold text-sm text-primary uppercase">Documentos de Respaldo (PDF)</h4>
+                                        {renderDocUpload('Cotización Cliente', 'url_cotizacion_cliente')}
+                                        {renderDocUpload('Orden de Compra (PO) Cliente', 'url_po_cliente')}
+                                        {renderDocUpload('Cotización Proveedor', 'url_cotizacion_proveedor')}
+                                        {renderDocUpload('Orden de Compra (PO) Proveedor', 'url_po_proveedor')}
                                     </div>
                                 </div>
                             )}
@@ -301,15 +372,15 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                 </div>
 
                 <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-border bg-card">
-                    <button onClick={onClose} className="px-5 py-2 rounded-lg font-bold text-muted-foreground hover:bg-muted transition-colors">Cancelar</button>
+                    <button onClick={onClose} className="px-5 py-2 rounded-lg font-bold text-muted-foreground hover:bg-muted transition-colors text-sm">Cancelar</button>
                     
                     {esProyectoCompletado && userRole === 'administrador' ? (
-                        <button onClick={handleReactivar} disabled={loading || uploadingDoc} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md disabled:opacity-50">
+                        <button onClick={handleReactivar} disabled={loading || uploadingDoc} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md text-sm disabled:opacity-50">
                             {loading ? 'Reactivando...' : 'Reactivar Proyecto'}
                         </button>
                     ) : (
-                        <button onClick={handleSave} disabled={loading || uploadingDoc} className="bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md disabled:opacity-50">
-                            {loading || uploadingDoc ? 'Procesando...' : 'Guardar Cambios'}
+                        <button onClick={handleSave} disabled={loading || uploadingDoc} className="bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md text-sm disabled:opacity-50">
+                            {loading ? 'Guardando...' : 'Guardar Cambios'}
                         </button>
                     )}
                 </div>
@@ -317,5 +388,3 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
         </div>
     );
 };
-
-export default ProjectManagementModal;

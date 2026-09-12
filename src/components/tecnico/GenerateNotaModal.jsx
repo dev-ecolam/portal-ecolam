@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 
@@ -24,7 +24,7 @@ const GenerateNotaModal = ({ project, onClose, onFinalized }) => {
             pdfDoc.setFont("helvetica", "normal");
             pdfDoc.text(`FECHA: ${new Date().toLocaleDateString('es-MX')}`, 20, 75);
             pdfDoc.text(`PROYECTO: ${project.npu}`, 20, 85);
-            pdfDoc.text(`CLIENTE: ${project.clientes?.nombre_empresa}`, 20, 95);
+            pdfDoc.text(`PLANTA: ${project.plantas?.nombre_planta}`, 20, 95);
             pdfDoc.text(`SERVICIO: ${project.servicios?.nombre_servicio}`, 20, 105);
             pdfDoc.text("Comentarios Finales:", 20, 125);
             const splitComments = pdfDoc.splitTextToSize(comments, 170);

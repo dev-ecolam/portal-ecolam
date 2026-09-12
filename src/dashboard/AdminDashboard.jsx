@@ -28,10 +28,9 @@ const AdminDashboard = ({ selectedRole }) => {
             // Limpiamos la consulta ajustándola a las nuevas relaciones de Planta
             const { data, error } = await supabase
                 .from('proyectos_v2')
-                .select('*, plantas(nombre_planta), servicios(nombre_servicio), proveedores(nombre_proveedor)')
+                .select('*, plantas(nombre_planta), servicios(nombre_servicio), proveedores(nombre_proveedor, proveedor_id_numerico)')
                 .gte('fecha_apertura', startDate)
                 .order('fecha_apertura', { ascending: false });
-            
             if (error) throw error;
             setProjects(data || []);
         } catch (error) {

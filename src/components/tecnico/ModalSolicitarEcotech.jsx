@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { toast } from 'sonner';
 
 export const ModalSolicitarEcotech = ({ project, onClose, onFinalized }) => {
@@ -54,10 +54,10 @@ export const ModalSolicitarEcotech = ({ project, onClose, onFinalized }) => {
                         />
                     </div>
                     <div>
-                        <label className="block text-sm font-bold mb-1">Cantidad de Puntos por Día</label>
+                        <label className="block text-sm font-bold mb-1">Cantidad de Puntos</label>
                         <input 
                             type="text" 
-                            placeholder="Ej. 15 puntos diarios" 
+                            placeholder="Ej. 15 puntos" 
                             value={puntosDia} 
                             onChange={e => setPuntosDia(e.target.value)} 
                             className="w-full px-4 py-2 border border-border rounded-lg bg-background outline-none focus:border-accent text-sm"

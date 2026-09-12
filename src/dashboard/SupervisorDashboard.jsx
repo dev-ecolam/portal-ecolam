@@ -111,16 +111,18 @@ const SupervisorDashboard = () => {
                     aTiempo++; 
                     return;
                 }
-                const deadline = new Date(p.fecha_entrega_interna);
+
+                const datePart = p.fecha_entrega_interna.substring(0, 10);
+                const deadline = new Date(`${datePart}T00:00:00`);
                 deadline.setHours(0,0,0,0);
+                
                 const diffTime = deadline - today;
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
                 if (diffDays < 0) atrasados++;
-                else if (diffDays <= 3) porVencer++;
+                else if (diffDays <= 7) porVencer++; // Tu regla de 7 días
                 else aTiempo++;
             });
-
             const terminadosEsteAno = allProjects.filter(p => 
                 p.tecnico_id === tech.id && 
                 p.estado === 'terminado' &&

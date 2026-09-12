@@ -111,8 +111,9 @@ const AssignProjectModal = ({ project, technicians, onClose, onFinalized }) => {
                 .from('proyectos_v2')
                 .update({ 
                     tecnico_id: selectedTech,
-                    dias_habiles_estimados: parseInt(diasHabiles, 10),
-                    fecha_entrega_interna: fechaCalculada
+                    dias_asignados_tecnico: parseInt(diasHabiles, 10), // Nuevo campo
+                    fecha_entrega_interna: fechaCalculada, // Límite interno
+                    estado_operativo: 'Pendiente' // Estado inicial para el técnico
                 })
                 .eq('id', project.id);
                 

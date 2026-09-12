@@ -1,48 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabase/client';
+import React, { useState, useEffect, useMemo } from 'react';
+import { supabase } from '../../supabase/client';
 import { toast } from 'sonner';
-import DashboardLayout from '../components/layout/DashboardLayout';
-import { AlertCircle, CheckCircle2, FileText, UploadCloud, FolderOpen, Calendar as CalendarIcon, LayoutKanban, Clock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileText, UploadCloud, FolderOpen, Calendar as CalendarIcon, Kanban, Clock, Play, Pause, CheckSquare } from 'lucide-react';
 
-// Modales y Componentes
-import { ConfirmationModal } from '../components/ui/ConfirmationModal';
+import DashboardLayout from '../components/layout/DashboardLayout';
+import { ConfirmationModal } from '../components/ui/UIComponents';
 import ProjectCard from '../components/tecnico/ProjectCard';
 import { ProjectLogModal } from '../components/tecnico/ProjectLogModal';
 import { ManageTaskModal } from '../components/tecnico/ManageTaskModal';
 import { ModalSolicitarEcotech } from '../components/tecnico/ModalSolicitarEcotech';
-// Nota: Si ya no usas GenerateNotaModal porque metimos DFlip, puedes quitarlo. Lo dejo por si acaso.
 import { ClientDossierPanel } from '../components/tecnico/ClientDossierPanel';
-import { AgendaTecnicoPanel } from '../components/tecnico/AgendaTecnicoPanel'; // Asegúrate de tener este archivo creado
+import { AgendaTecnicoPanel } from '../components/tecnico/AgendaTecnicoPanel';
+import PauseProjectModal from '../components/tecnico/PauseProjectModal';
+
+
 
 const TecnicoDashboard = () => {
     const [projects, setProjects] = useState([]);
     const [loadingProjects, setLoadingProjects] = useState(true);
     const [activeProject, setActiveProject] = useState(null);
-    
-    // NUEVO: Estado para las pestañas
-    const [activeTab, setActiveTab] = useState('home'); // 'home' | 'proyectos'
-    
+    const [activeTab, setActiveTab] = useState('home');
     const [modalProject, setModalProject] = useState(null);
     const [modalType, setModalType] = useState(''); 
     const [confirmingAction, setConfirmingAction] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
     const [showDossier, setShowDossier] = useState(false);
+    const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+    const [showEcotechSolicitar, setShowEcotechSolicitar] = useState(false);
+    const [showEcotechFinalizar, setShowEcotechFinalizar] = useState(false);
+    const [showGenerateNota, setShowGenerateNota] = useState(false);
 
     const fetchProjects = async (userId) => {
         setLoadingProjects(true);
         try {
             const { data, error } = await supabase
                 .from('proyectos_v2')
-                .select('*, clientes(nombre_empresa), servicios(nombre_servicio)')
+                .select('*, plantas(nombre_planta), servicios(nombre_servicio), proveedores(nombre_proveedor, proveedor_id_numerico)')
                 .eq('tecnico_id', userId)
-                .in('estado', ['activo', 'aprobado_supervisor'])
-                .order('fecha_entrega_interna', { ascending: true }); 
+                .in('estado', ['Activo', 'activo', 'aprobado_supervisor']);
             
             if (error) throw error;
-            setProjects(data || []);
+            
+            const todayStr = new Date().toDateString();
+            const updatesToPendiente = [];
+            
+            const processedData = data.map(p => {
+                let currentStatus = p.estado_operativo || 'Pendiente';
+                
+                if (currentStatus === 'En Proceso' && p.ultimo_inicio_proceso) {
+                    const lastStartStr = new Date(p.ultimo_inicio_proceso).toDateString();
+                    if (lastStartStr !== todayStr) {
+                        currentStatus = 'Pendiente';
+                        updatesToPendiente.push(p.id);
+                    }
+                }
+                return { ...p, estado_operativo: currentStatus };
+            });
+
+            // Ejecutamos las actualizaciones silenciosas en BD si hubo reseteos
+            if (updatesToPendiente.length > 0) {
+                supabase.from('proyectos_v2')
+                    .update({ estado_operativo: 'Pendiente' })
+                    .in('id', updatesToPendiente)
+                    .then(() => console.log(`Reseteados ${updatesToPendiente.length} proyectos a Pendiente.`));
+            }
+
+            setProjects(processedData);
             
             if (activeProject) {
-                const updatedActive = data?.find(p => p.id === activeProject.id);
+                const updatedActive = processedData.find(p => p.id === activeProject.id);
                 if (updatedActive) setActiveProject(updatedActive);
                 else setActiveProject(null);
             }
@@ -65,56 +91,148 @@ const TecnicoDashboard = () => {
         init();
     }, []);
 
-    const handleSoftFinish = async (projectId) => {
+    // ORDENAMIENTO INTELIGENTE DEL KANBAN
+    const orderedProjects = useMemo(() => {
+        const orderWeight = {
+            'En Proceso': 1,
+            'Pendiente': 2,
+            'Pendiente Fase 2': 3,
+            'Pausado': 4,
+            'Revisión': 5
+        };
+
+        return [...projects].sort((a, b) => {
+            const weightA = orderWeight[a.estado_operativo] || 99;
+            const weightB = orderWeight[b.estado_operativo] || 99;
+            if (weightA !== weightB) return weightA - weightB;
+            // Si tienen el mismo estado, ordenamos por fecha de entrega (más urgente primero)
+            return new Date(a.fecha_entrega_interna || '2099-01-01') - new Date(b.fecha_entrega_interna || '2099-01-01');
+        });
+    }, [projects]);
+
+    // MANEJADORES DE ESTADO OPERATIVO
+    const handleStartWork = async (projectId) => {
+        setIsUpdatingStatus(true);
         try {
-            const { error } = await supabase
-                .from('proyectos_v2')
-                .update({ fecha_fin_tecnico_real: new Date().toISOString() })
+            const { error } = await supabase.from('proyectos_v2')
+                .update({ 
+                    estado_operativo: 'En Proceso',
+                    ultimo_inicio_proceso: new Date().toISOString()
+                })
+                .eq('id', projectId);
+            if (error) throw error;
+            
+            toast.success("Trabajo iniciado. Reloj corriendo.");
+            fetchProjects(currentUser.id);
+        } catch (err) {
+            toast.error("Error al iniciar trabajo.");
+        } finally {
+            setIsUpdatingStatus(false);
+        }
+    };
+    
+    const handleSoftFinish = async (projectId) => {
+        setIsUpdatingStatus(true);
+        try {
+            const { error } = await supabase.from('proyectos_v2')
+                .update({ 
+                    estado_operativo: 'Pausado', // Lo pausamos porque ahora espera al proveedor
+                    fecha_fin_tecnico_real: new Date().toISOString()
+                })
                 .eq('id', projectId);
                 
             if (error) throw error;
+            
+            // Dejamos huella en bitácora
+            await supabase.from('bitacoras_proyectos').insert([{
+                proyecto_id: projectId,
+                usuario_id: currentUser.id,
+                mensaje: `⏳ Parte técnica finalizada. Proyecto en espera de proveedor.`
+            }]);
+
             toast.success("Parte técnica finalizada.");
             fetchProjects(currentUser.id);
         } catch (err) {
             toast.error("Error al finalizar la tarea técnica.");
+        } finally {
+            setIsUpdatingStatus(false);
         }
-        setConfirmingAction(null);
     };
+
+    // Función para seleccionar proyecto y marcar notificaciones como leídas
+    const handleSelectProject = async (project) => {
+        setActiveProject(project);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        const isNew = project.estado_operativo === 'Pendiente' && !project.ultimo_inicio_proceso;
+        const hasNotes = !!project.notas_supervisor;
+        const isRejected = project.estado_operativo === 'Rechazado' || project.estado === 'Rechazado';
+        const needsAttention = (isNew || hasNotes || isRejected) && !project.notas_leidas;
+
+        if (needsAttention) {
+            // 1. ACTUALIZACIÓN OPTIMISTA: Apagamos el punto en pantalla
+            setProjects(prev => prev.map(p => p.id === project.id ? { ...p, notas_leidas: true } : p));
+            
+            // 2. Actualizamos en la base de datos esperando la respuesta
+            const { error } = await supabase.from('proyectos_v2')
+                .update({ notas_leidas: true })
+                .eq('id', project.id);
+                
+            // 3. LA TRAMPA: Si falla por debajo, nos avisará en pantalla
+            if (error) {
+                console.error("Error al apagar notificación:", error);
+                toast.error(`Error BD: ${error.message}`);
+                // Revertimos el optimismo si falló
+                setProjects(prev => prev.map(p => p.id === project.id ? { ...p, notas_leidas: false } : p));
+            }
+        }
+    };
+
+    // Calculamos cuántos proyectos requieren atención para el contador de la pestaña
+    const notificacionesCount = projects.filter(p => {
+        const isNew = p.estado_operativo === 'Pendiente' && !p.ultimo_inicio_proceso;
+        const hasNotes = !!p.notas_supervisor;
+        const isRejected = p.estado_operativo === 'Rechazado' || p.estado === 'Rechazado';
+        return (isNew || hasNotes || isRejected) && !p.notas_leidas;
+    }).length;
 
     return (
         <DashboardLayout>
-            {/* ENCABEZADO Y PESTAÑAS */}
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-primary mb-6">Mi Área de Trabajo</h1>
                 
                 <div className="flex space-x-2 border-b border-border">
-                    <button 
-                        onClick={() => setActiveTab('home')}
-                        className={`flex items-center px-6 py-3 font-bold text-sm transition-colors border-b-2 ${activeTab === 'home' ? 'border-accent text-accent' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}
-                    >
+                    <button onClick={() => setActiveTab('home')} className={`flex items-center px-6 py-3 font-bold text-sm transition-colors border-b-2 ${activeTab === 'home' ? 'border-accent text-accent' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}>
                         <CalendarIcon className="w-4 h-4 mr-2" /> Resumen y Agenda
                     </button>
-                    <button 
-                        onClick={() => setActiveTab('proyectos')}
-                        className={`flex items-center px-6 py-3 font-bold text-sm transition-colors border-b-2 ${activeTab === 'proyectos' ? 'border-accent text-accent' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}
-                    >
-                        <LayoutKanban className="w-4 h-4 mr-2" /> Mis Proyectos
-                        {projects.length > 0 && (
-                            <span className="ml-2 bg-primary text-primary-foreground px-2 py-0.5 rounded-full text-[10px]">
-                                {projects.length}
+                    <button onClick={() => setActiveTab('proyectos')} className={`flex items-center px-6 py-3 font-bold text-sm transition-colors border-b-2 ${activeTab === 'proyectos' ? 'border-accent text-accent' : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}>
+                        <Kanban className="w-4 h-4 mr-2" /> Mis Proyectos
+                        {notificacionesCount > 0 && (
+                            <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-[10px] animate-pulse">
+                                {notificacionesCount}
                             </span>
                         )}
                     </button>
                 </div>
             </div>
 
-            {/* ========================================================= */}
-            {/* PESTAÑA 1: HOME / AGENDA Y RESUMEN */}
-            {/* ========================================================= */}
+            {/* PESTAÑA 1: HOME */}
             {activeTab === 'home' && (
                 <div className="space-y-6 animate-in fade-in duration-300">
                     
-                    {/* ALERTA: ACUSES PENDIENTES */}
+                    {/* NUEVO: ALERTA DE PROYECTOS RECIÉN ASIGNADOS */}
+                    {projects.filter(p => p.estado_operativo === 'Pendiente' && !p.ultimo_inicio_proceso).length > 0 && (
+                        <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl shadow-sm">
+                            <h3 className="text-blue-800 font-bold mb-2 flex items-center">
+                                <AlertCircle className="w-5 h-5 mr-2" /> Tienes Nuevas Asignaciones
+                            </h3>
+                            <p className="text-sm text-blue-700">
+                                Se te han asignado {projects.filter(p => p.estado_operativo === 'Pendiente' && !p.ultimo_inicio_proceso).length} proyecto(s) nuevo(s). Revisa la pestaña de "Mis Proyectos" para comenzar.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Alerta de Acuses (Mantenemos la que ya tenías) */}
                     {projects.filter(p => p.esperando_acuse).length > 0 && (
                         <div className="bg-red-50 border border-red-200 p-4 rounded-xl shadow-sm">
                             <div className="flex items-center mb-3">
@@ -128,10 +246,7 @@ const TecnicoDashboard = () => {
                                             <p className="font-bold text-sm text-gray-800">{p.npu}</p>
                                             <p className="text-xs text-gray-500">{p.clientes?.nombre_empresa}</p>
                                         </div>
-                                        <button 
-                                            onClick={() => { setModalProject(p); setModalType('subir_acuse'); }}
-                                            className="bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-red-700 w-full sm:w-auto"
-                                        >
+                                        <button onClick={() => { setModalProject(p); setModalType('subir_acuse'); }} className="bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-red-700 w-full sm:w-auto">
                                             Subir Acuse
                                         </button>
                                     </div>
@@ -139,43 +254,30 @@ const TecnicoDashboard = () => {
                             </div>
                         </div>
                     )}
-
-                    {/* AGENDA Y SEGUIMIENTO PROVEEDORES (Componente Extraído) */}
-                    {currentUser && (
-                        <AgendaTecnicoPanel 
-                            userId={currentUser.id} 
-                            proyectosConProveedores={projects.filter(p => p.esperando_proveedor)}
-                        />
-                    )}
+                    {currentUser && <AgendaTecnicoPanel userId={currentUser.id} proyectosConProveedores={projects.filter(p => p.esperando_proveedor)} />}
                 </div>
             )}
 
-
-            {/* ========================================================= */}
             {/* PESTAÑA 2: KANBAN DE PROYECTOS */}
-            {/* ========================================================= */}
             {activeTab === 'proyectos' && (
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr,400px] gap-8 animate-in slide-in-from-right-4 duration-300">
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr,420px] gap-8 animate-in slide-in-from-right-4 duration-300">
                     
-                    {/* COLUMNA IZQUIERDA: KANBAN DE PROYECTOS */}
+                    {/* COLUMNA IZQUIERDA: LISTA DE PROYECTOS */}
                     <div>
                         <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold text-foreground">Tareas Pendientes</h2>
+                            <h2 className="text-xl font-bold text-foreground">Tareas Asignadas</h2>
                         </div>
 
                         {loadingProjects ? (
                             <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div></div>
-                        ) : projects.length > 0 ? (
+                        ) : orderedProjects.length > 0 ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {projects.map(project => (
+                                {orderedProjects.map(project => (
                                     <ProjectCard 
                                         key={project.id} 
                                         project={project} 
                                         isActive={activeProject?.id === project.id}
-                                        onSelect={() => {
-                                            setActiveProject(project);
-                                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                                        }}
+                                        onSelect={() => handleSelectProject(project)}
                                     />
                                 ))}
                             </div>
@@ -187,99 +289,179 @@ const TecnicoDashboard = () => {
                         )}
                     </div>
 
-                    {/* COLUMNA DERECHA: HERRAMIENTAS DEL PROYECTO ACTIVO */}
+                    {/* COLUMNA DERECHA: HERRAMIENTAS Y CONTROLES OPERATIVOS */}
                     <div className="sticky top-8 h-fit">
                         {activeProject ? (
                             <div className="bg-card p-6 rounded-xl border border-border shadow-sm space-y-6">
-                                <div>
-                                    <h3 className="text-lg font-bold text-foreground mb-1">Herramientas de Trabajo</h3>
-                                    <p className="text-sm text-muted-foreground">Opciones para el NPU {activeProject.npu}</p>
+                                
+                                {/* CABECERA Y ESTADO */}
+                                <div className="border-b border-border pb-4">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-primary">{activeProject.npu}</h3>
+                                            <p className="text-sm text-muted-foreground font-medium">{activeProject.servicios?.nombre_servicio}</p>
+                                        </div>
+                                        <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider
+                                            ${activeProject.estado_operativo === 'En Proceso' ? 'bg-green-100 text-green-700 border border-green-200' : 
+                                              activeProject.estado_operativo === 'Pausado' ? 'bg-amber-100 text-amber-700 border border-amber-200' : 
+                                              'bg-muted text-muted-foreground border border-border'}`}>
+                                            {activeProject.estado_operativo || 'Pendiente'}
+                                        </span>
+                                    </div>
                                 </div>
 
-                                <div className="bg-amber-50 dark:bg-amber-950/30 border-l-4 border-amber-500 p-4 rounded-r-lg">
-                                    <h4 className="text-sm font-bold text-amber-800 dark:text-amber-400 flex items-center mb-2">
-                                        <AlertCircle className="w-4 h-4 mr-2" /> Instrucciones
-                                    </h4>
-                                    <p className="text-sm text-amber-900/80 dark:text-amber-200/80 whitespace-pre-wrap">
-                                        {activeProject.notas_supervisor || activeProject.comentarios_apertura || "No hay instrucciones adicionales."}
-                                    </p>
-                                </div>
+                                {/* CONTROLES DE TIEMPO */}
+                                <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-3">
+                                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Controles de Ejecución</p>
+                                    
+                                    {(activeProject.estado_operativo === 'Pendiente' || activeProject.estado_operativo === 'Pendiente Fase 2' || activeProject.estado_operativo === 'Pausado') && (
+                                        <button 
+                                            onClick={() => handleStartWork(activeProject.id)} 
+                                            disabled={isUpdatingStatus}
+                                            className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                                        >
+                                            <Play className="w-4 h-4 mr-2" /> Iniciar Trabajo
+                                        </button>
+                                    )}
 
-                                <div className="space-y-3 pt-4 border-t border-border">
-                                    {/* Botón de Expediente Común para todos */}
-                                    <button 
-                                        onClick={() => setShowDossier(true)} 
-                                        className="w-full flex items-center justify-center py-3 px-4 border-2 border-primary rounded-lg shadow-sm text-sm font-bold text-primary bg-primary/5 hover:bg-primary/10 transition-colors mb-3"
-                                    >
-                                        <FolderOpen className="w-4 h-4 mr-2" /> 
-                                        Ver Expediente del Cliente
-                                    </button>
-
-                                    {/* LÓGICA ESPECIAL ECOTECH vs PROYECTO NORMAL */}
-                                    {activeProject.proveedor_nombre?.toLowerCase().includes('ecotech') ? (
-                                        
-                                        !activeProject.ecotech_num_proyecto ? (
-                                            <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg space-y-3 mt-4">
-                                                <p className="text-sm text-orange-800 font-bold">⚠️ Requiere Número de Proyecto Ecotech</p>
-                                                {activeProject.ecotech_solicitud_enviada ? (
-                                                    <p className="text-xs text-orange-600 flex items-center font-bold">
-                                                        <Clock className="w-4 h-4 mr-1"/> Solicitud enviada. Esperando asignación...
-                                                    </p>
+                                    {activeProject.estado_operativo === 'En Proceso' && (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button 
+                                                onClick={() => { setModalProject(activeProject); setModalType('pausar'); }}
+                                                disabled={isUpdatingStatus}
+                                                className="w-full flex items-center justify-center py-3 px-4 border border-amber-500/30 rounded-lg text-sm font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                                            >
+                                                <Pause className="w-4 h-4 mr-2" /> Pausar
+                                            </button>
+                                            
+                                            {/* FLUJO ECOTECH ('01') */}
+                                            {activeProject.proveedores?.proveedor_id_numerico === '01' ? (
+                                                !activeProject.ecotech_solicitud_enviada ? (
+                                                    <button 
+                                                        onClick={() => setShowEcotechSolicitar(true)}
+                                                        className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-orange-600 text-white hover:bg-orange-700"
+                                                    >
+                                                        Solicitar Folio Ecotech
+                                                    </button>
                                                 ) : (
                                                     <button 
-                                                        onClick={() => { setModalProject(activeProject); setModalType('solicitar_ecotech'); }}
-                                                        className="w-full bg-orange-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-orange-700 transition-colors"
+                                                        onClick={() => setShowEcotechFinalizar(true)}
+                                                        className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700"
                                                     >
-                                                        Generar Solicitud a Ecotech
+                                                        Subir Campo (Ecotech)
+                                                    </button>
+                                                )
+                                            ) : activeProject.proveedores?.proveedor_id_numerico && activeProject.proveedores.proveedor_id_numerico !== '00' ? (
+                                                /* OTROS PROVEEDORES EXTERNOS */
+                                                <button 
+                                                    onClick={() => handleSoftFinish(activeProject.id)} 
+                                                    disabled={isUpdatingStatus || activeProject.fecha_fin_tecnico_real}
+                                                    className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                                                >
+                                                    <CheckSquare className="w-4 h-4 mr-2" /> Fin. Parte Técnica
+                                                </button>
+                                            ) : (
+                                                /* PROYECTOS INTERNOS ('00' o sin proveedor) */
+                                                <button 
+                                                    onClick={() => { setModalProject(activeProject); setModalType('task'); }} 
+                                                    disabled={isUpdatingStatus}
+                                                    className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                                >
+                                                    <CheckSquare className="w-4 h-4 mr-2" /> Finalizar Tarea
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* FLUJO NOTA DE ENTREGA: Si el supervisor ya aprobó el proyecto */}
+                                    {activeProject.estado?.toLowerCase() === 'aprobado_supervisor' && (
+                                        <button 
+                                            onClick={() => setShowGenerateNota(true)}
+                                            className="w-full flex items-center justify-center py-3 px-4 mt-2 border border-transparent rounded-lg shadow-sm text-sm font-bold bg-green-600 text-white hover:bg-green-700"
+                                        >
+                                            <FileText className="w-4 h-4 mr-2" /> Generar Nota y Terminar
+                                        </button>
+                                    )}
+                                    
+                                    {/* Botón flotante extra para Subir Entregable Final (aplica misma regla numérica) */}
+                                    {activeProject.proveedores?.proveedor_id_numerico && activeProject.proveedores.proveedor_id_numerico !== '00' && activeProject.fecha_fin_tecnico_real && activeProject.estado_operativo !== 'Revisión' && (
+                                        <button 
+                                            onClick={() => { setModalProject(activeProject); setModalType('task'); }} 
+                                            className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 mt-2"
+                                        >
+                                            <CheckSquare className="w-4 h-4 mr-2" /> Subir Entregable Final
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* NOTAS E INSTRUCCIONES SEPARADAS */}
+                                <div className="space-y-3 mb-4">
+                                    {activeProject.comentarios_apertura && (
+                                        <div className="bg-muted/30 p-4 rounded-xl border border-border">
+                                            <h4 className="text-xs font-bold text-muted-foreground uppercase mb-1">Notas de Apertura (Admin)</h4>
+                                            <p className="text-sm text-foreground whitespace-pre-wrap">
+                                                {activeProject.comentarios_apertura}
+                                            </p>
+                                        </div>
+                                    )}
+                                    
+                                    {activeProject.notas_supervisor && (
+                                        <div className="bg-accent/5 border-l-4 border-accent p-4 rounded-r-xl">
+                                            <h4 className="text-xs font-bold text-accent uppercase mb-1">Instrucciones del Supervisor</h4>
+                                            <p className="text-sm text-foreground whitespace-pre-wrap">
+                                                {activeProject.notas_supervisor}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* HERRAMIENTAS GENERALES */}
+                                <div className="space-y-3 pt-4 border-t border-border">
+                                    <button onClick={() => setShowDossier(true)} className="w-full flex items-center justify-center py-2.5 px-4 border-2 border-primary rounded-lg text-sm font-bold text-primary hover:bg-primary/5 transition-colors mb-2">
+                                        <FolderOpen className="w-4 h-4 mr-2" /> Ver Expediente del Cliente
+                                    </button>
+
+                                    {/* LÓGICA ECOTECH */}
+                                    {activeProject.proveedor_nombre?.toLowerCase().includes('ecotech') ? (
+                                        !activeProject.ecotech_num_proyecto ? (
+                                            <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg space-y-3">
+                                                <p className="text-sm text-orange-800 font-bold">⚠️ Requiere No. Ecotech</p>
+                                                {activeProject.ecotech_solicitud_enviada ? (
+                                                    <p className="text-xs text-orange-600 flex items-center font-bold"><Clock className="w-4 h-4 mr-1"/> Solicitud enviada...</p>
+                                                ) : (
+                                                    <button onClick={() => { setModalProject(activeProject); setModalType('solicitar_ecotech'); }} className="w-full bg-orange-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-orange-700">
+                                                        Generar Solicitud
                                                     </button>
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="space-y-3 mt-4">
-                                                <p className="text-xs font-bold text-green-700 bg-green-50 p-2 rounded border border-green-200">
-                                                    ✓ No. Ecotech asignado: {activeProject.ecotech_num_proyecto}
-                                                </p>
-                                                
-                                                {/* NUEVO: BOTÓN PARA QUE EL TÉCNICO VEA LA COTIZACIÓN DE ECOTECH */}
+                                            <div className="space-y-3">
+                                                <p className="text-xs font-bold text-green-700 bg-green-50 p-2 rounded border border-green-200">✓ No. Ecotech: {activeProject.ecotech_num_proyecto}</p>
                                                 {activeProject.ecotech_pdf_proyecto && (
-                                                    <a href={activeProject.ecotech_pdf_proyecto} target="_blank" rel="noreferrer" className="w-full flex items-center justify-center py-2 px-4 border border-accent/30 bg-accent/5 text-accent rounded-lg shadow-sm text-sm font-bold hover:bg-accent/10 transition-colors">
-                                                        <FileText className="w-4 h-4 mr-2" /> Ver PDF (Cotización Ecotech)
+                                                    <a href={activeProject.ecotech_pdf_proyecto} target="_blank" rel="noreferrer" className="w-full flex items-center justify-center py-2 px-4 border border-accent/30 bg-accent/5 text-accent rounded-lg text-sm font-bold hover:bg-accent/10">
+                                                        <FileText className="w-4 h-4 mr-2" /> Cotización Ecotech
                                                     </a>
                                                 )}
-
-                                                <button onClick={() => { setModalProject(activeProject); setModalType('log'); }} className="w-full flex items-center justify-center py-3 px-4 border border-border rounded-lg shadow-sm text-sm font-bold bg-background hover:bg-muted">
-                                                    <FileText className="w-4 h-4 mr-2" /> Abrir Bitácora
+                                                <button onClick={() => { setModalProject(activeProject); setModalType('log'); }} className="w-full flex items-center justify-center py-2.5 px-4 border border-border rounded-lg text-sm font-bold bg-background hover:bg-muted">
+                                                    <FileText className="w-4 h-4 mr-2" /> Bitácora
                                                 </button>
-                                                
-                                                <button onClick={() => { setModalProject(activeProject); setModalType('finalizar_ecotech'); }} className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700">
+                                                <button onClick={() => { setModalProject(activeProject); setModalType('finalizar_ecotech'); }} className="w-full flex items-center justify-center py-2.5 px-4 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">
                                                     <UploadCloud className="w-4 h-4 mr-2" /> Enviar Hojas a Ecotech
                                                 </button>
                                             </div>
                                         )
-
                                     ) : (
                                         /* PROYECTO NORMAL */
-                                        <>
-                                            <button 
-                                                onClick={() => { setModalProject(activeProject); setModalType('log'); }} 
-                                                className="w-full flex items-center justify-center py-3 px-4 border border-border rounded-lg shadow-sm text-sm font-bold bg-background hover:bg-muted"
-                                            >
-                                                <FileText className="w-4 h-4 mr-2" /> Abrir Bitácora
-                                            </button>
-                                            <button 
-                                                onClick={() => { setModalProject(activeProject); setModalType('task'); }} 
-                                                className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700"
-                                            >
-                                                <UploadCloud className="w-4 h-4 mr-2" /> Subir Evidencia para Revisión
-                                            </button>
-                                        </>
+                                        <button onClick={() => { setModalProject(activeProject); setModalType('log'); }} className="w-full flex items-center justify-center py-2.5 px-4 border border-border rounded-lg text-sm font-bold bg-background hover:bg-muted">
+                                            <FileText className="w-4 h-4 mr-2" /> Abrir Bitácora
+                                        </button>
                                     )}
                                 </div>
                             </div>
                         ) : (
                             <div className="bg-card border border-border p-8 rounded-xl shadow-sm text-center">
                                 <h2 className="text-xl font-bold text-primary mb-2">Selecciona un Proyecto</h2>
-                                <p className="text-sm text-muted-foreground">Haz clic en un proyecto de tu lista para ver sus herramientas e instrucciones.</p>
+                                <p className="text-sm text-muted-foreground">Haz clic en tu lista para ver las herramientas operativas.</p>
                             </div>
                         )}
                     </div>
@@ -287,43 +469,55 @@ const TecnicoDashboard = () => {
             )}
 
             {/* MODALES */}
-            {modalProject && modalType === 'log' && (
-                <ProjectLogModal project={modalProject} userId={currentUser?.id} onClose={() => setModalProject(null)} />
-            )}
+            {modalProject && modalType === 'log' && <ProjectLogModal project={modalProject} userId={currentUser?.id} onClose={() => setModalProject(null)} />}
+            {modalProject && modalType === 'task' && <ManageTaskModal project={modalProject} onClose={() => setModalProject(null)} onFinalized={() => fetchProjects(currentUser?.id)} />}
+            {modalProject && modalType === 'pausar' && <PauseProjectModal project={modalProject} userId={currentUser?.id} onClose={() => setModalProject(null)} onFinalized={() => fetchProjects(currentUser?.id)} />}
+            {modalProject && modalType === 'solicitar_ecotech' && <ModalSolicitarEcotech project={modalProject} onClose={() => setModalProject(null)} onFinalized={() => fetchProjects(currentUser?.id)} />}
+            {/* Si tienes ModalFinalizarEcotech importado, úsalo aquí también */}
+            {/* INYECCIÓN DE NUEVOS MODALES */}
             
-            {modalProject && modalType === 'task' && (
-                <ManageTaskModal project={modalProject} onClose={() => setModalProject(null)} onFinalized={() => fetchProjects(currentUser?.id)} />
-            )}
-
-            {confirmingAction && (
-                <ConfirmationModal {...confirmingAction} onCancel={() => setConfirmingAction(null)} />
-            )}
-            {modalProject && modalType === 'solicitar_ecotech' && (
-                <ModalSolicitarEcotech 
-                    project={modalProject} 
-                    onClose={() => setModalProject(null)} 
-                    onFinalized={() => fetchProjects(currentUser?.id)} 
-                />
-            )}
-
-            {/* Asegúrate de tener también el de finalizar_ecotech si no lo habías agregado: */}
-            {modalProject && modalType === 'finalizar_ecotech' && (
-                <ModalFinalizarEcotech 
-                    project={modalProject} 
-                    onClose={() => setModalProject(null)} 
-                    onFinalized={() => fetchProjects(currentUser?.id)} 
-                />
-            )}
-
-            {/* Panel del Expediente */}
-            {showDossier && activeProject?.clientes && (
+            {showDossier && activeProject && (
                 <ClientDossierPanel 
-                    clienteId={activeProject.cliente_id} 
-                    clienteNombre={activeProject.clientes.nombre_empresa}
+                    plantaId={activeProject.planta_id} 
+                    plantaNombre={activeProject.plantas?.nombre_planta} 
                     currentUser={currentUser}
                     onClose={() => setShowDossier(false)} 
                 />
             )}
+
+            {showEcotechFinalizar && activeProject && (
+                <ModalFinalizarEcotech 
+                    project={activeProject} 
+                    onClose={() => setShowEcotechFinalizar(false)} 
+                    onFinalized={() => {
+                        setShowEcotechFinalizar(false);
+                        fetchProjects(currentUser.id);
+                    }} 
+                />
+            )}
+
+            {showDossier && activeProject && (
+                <ClientDossierPanel 
+                    clienteId={activeProject.cliente_id} 
+                    clienteNombre={activeProject.clientes?.nombre_empresa} 
+                    currentUser={currentUser}
+                    onClose={() => setShowDossier(false)} 
+                />
+            )}
+
+            {showGenerateNota && activeProject && (
+                <GenerateNotaModal 
+                    project={activeProject} 
+                    onClose={() => setShowGenerateNota(false)} 
+                    onFinalized={() => {
+                        setShowGenerateNota(false);
+                        fetchProjects(currentUser.id);
+                        setActiveProject(null); // Lo quitamos de la vista porque ya se terminó
+                    }} 
+                />
+            )}
+            {confirmingAction && <ConfirmationModal {...confirmingAction} onCancel={() => setConfirmingAction(null)} />}
+            {showDossier && activeProject?.clientes && <ClientDossierPanel clienteId={activeProject.cliente_id} clienteNombre={activeProject.clientes.nombre_empresa} currentUser={currentUser} onClose={() => setShowDossier(false)} />}
         </DashboardLayout>
     );
 };
