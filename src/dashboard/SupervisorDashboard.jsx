@@ -71,7 +71,6 @@ const SupervisorDashboard = () => {
         fetchData();
     }, []);
 
-    // Memoizamos los cálculos para no saturar el render
     const processedData = useMemo(() => {
         if (technicians.length === 0) return { healthData: [], newProjects: [], reviewProjects: [], projectsByTechnician: {} };
 
@@ -81,15 +80,21 @@ const SupervisorDashboard = () => {
 
         // Clasificación inicial
         allProjects.forEach(p => {
-            const estado = (p.estado || '').toLowerCase();
+            const estadoGeneral = (p.estado || '').toLowerCase();
+            const estadoOperativo = (p.estado_operativo || '').toLowerCase();
             
-            if (estado === 'activo' && !p.tecnico_id) {
+            // 1. Nuevos por asignar: Activos pero sin técnico
+            if (estadoGeneral === 'activo' && !p.tecnico_id) {
                 newProjects.push(p);
-            } else if (estado === 'en_revision') {
+            } 
+            // 2. En Revisión: Activos y estado_operativo es 'revisión' (ignorando mayúsculas)
+            else if (estadoGeneral === 'activo' && estadoOperativo === 'revisión') {
                 reviewProjects.push(p);
             }
 
-            if (p.tecnico_id && (estado === 'activo' || estado === 'en_revision')) {
+            // 3. Proyectos asignados al técnico
+            // Ocultamos los que ya están en revisión para no duplicarlos en la vista de carga del técnico
+            if (p.tecnico_id && estadoGeneral === 'activo' && estadoOperativo !== 'revisión') {
                 if (!projectsByTechnician[p.tecnico_id]) projectsByTechnician[p.tecnico_id] = [];
                 projectsByTechnician[p.tecnico_id].push(p);
             }
@@ -120,9 +125,10 @@ const SupervisorDashboard = () => {
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
                 if (diffDays < 0) atrasados++;
-                else if (diffDays <= 7) porVencer++; // Tu regla de 7 días
+                else if (diffDays <= 7) porVencer++; // Regla de 7 días
                 else aTiempo++;
             });
+
             const terminadosEsteAno = allProjects.filter(p => 
                 p.tecnico_id === tech.id && 
                 p.estado === 'terminado' &&

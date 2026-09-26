@@ -12,7 +12,7 @@ import { ModalSolicitarEcotech } from '../components/tecnico/ModalSolicitarEcote
 import { ClientDossierPanel } from '../components/tecnico/ClientDossierPanel';
 import { AgendaTecnicoPanel } from '../components/tecnico/AgendaTecnicoPanel';
 import PauseProjectModal from '../components/tecnico/PauseProjectModal';
-
+import { ModalFinalizarTarea } from '../components/tecnico/ModalFinalizarTarea';
 
 
 const TecnicoDashboard = () => {
@@ -29,6 +29,7 @@ const TecnicoDashboard = () => {
     const [showEcotechSolicitar, setShowEcotechSolicitar] = useState(false);
     const [showEcotechFinalizar, setShowEcotechFinalizar] = useState(false);
     const [showGenerateNota, setShowGenerateNota] = useState(false);
+    const [showFinalizarTarea, setShowFinalizarTarea] = useState(false);
 
     const fetchProjects = async (userId) => {
         setLoadingProjects(true);
@@ -363,7 +364,7 @@ const TecnicoDashboard = () => {
                                             ) : (
                                                 /* PROYECTOS INTERNOS ('00' o sin proveedor) */
                                                 <button 
-                                                    onClick={() => { setModalProject(activeProject); setModalType('task'); }} 
+                                                    onClick={() => setShowFinalizarTarea(true)} 
                                                     disabled={isUpdatingStatus}
                                                     className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                                                 >
@@ -473,7 +474,6 @@ const TecnicoDashboard = () => {
             {modalProject && modalType === 'task' && <ManageTaskModal project={modalProject} onClose={() => setModalProject(null)} onFinalized={() => fetchProjects(currentUser?.id)} />}
             {modalProject && modalType === 'pausar' && <PauseProjectModal project={modalProject} userId={currentUser?.id} onClose={() => setModalProject(null)} onFinalized={() => fetchProjects(currentUser?.id)} />}
             {modalProject && modalType === 'solicitar_ecotech' && <ModalSolicitarEcotech project={modalProject} onClose={() => setModalProject(null)} onFinalized={() => fetchProjects(currentUser?.id)} />}
-            {/* Si tienes ModalFinalizarEcotech importado, úsalo aquí también */}
             {/* INYECCIÓN DE NUEVOS MODALES */}
             
             {showDossier && activeProject && (
@@ -495,29 +495,43 @@ const TecnicoDashboard = () => {
                     }} 
                 />
             )}
-
-            {showDossier && activeProject && (
-                <ClientDossierPanel 
-                    clienteId={activeProject.cliente_id} 
-                    clienteNombre={activeProject.clientes?.nombre_empresa} 
-                    currentUser={currentUser}
-                    onClose={() => setShowDossier(false)} 
+            
+            {showEcotechSolicitar && activeProject && (
+                <ModalSolicitarEcotech 
+                    project={activeProject} 
+                    onClose={() => setShowEcotechSolicitar(false)} 
+                    onFinalized={() => {
+                        setShowEcotechSolicitar(false);
+                        fetchProjects(currentUser.id);
+                    }} 
                 />
             )}
 
             {showGenerateNota && activeProject && (
                 <GenerateNotaModal 
-                    project={activeProject} 
+                    project={activeProject}
+                    currentUser={currentUser} 
                     onClose={() => setShowGenerateNota(false)} 
                     onFinalized={() => {
                         setShowGenerateNota(false);
                         fetchProjects(currentUser.id);
-                        setActiveProject(null); // Lo quitamos de la vista porque ya se terminó
+                        setActiveProject(null);
+                    }} 
+                />
+            )}
+
+            {showFinalizarTarea && activeProject && (
+                <ModalFinalizarTarea 
+                    project={activeProject} 
+                    currentUser={currentUser}
+                    onClose={() => setShowFinalizarTarea(false)} 
+                    onFinalized={() => {
+                        setShowFinalizarTarea(false);
+                        fetchProjects(currentUser.id);
                     }} 
                 />
             )}
             {confirmingAction && <ConfirmationModal {...confirmingAction} onCancel={() => setConfirmingAction(null)} />}
-            {showDossier && activeProject?.clientes && <ClientDossierPanel clienteId={activeProject.cliente_id} clienteNombre={activeProject.clientes.nombre_empresa} currentUser={currentUser} onClose={() => setShowDossier(false)} />}
         </DashboardLayout>
     );
 };

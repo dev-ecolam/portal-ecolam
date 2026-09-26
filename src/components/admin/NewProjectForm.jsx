@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../../supabase/client';
 import { Alert } from '../ui/UIComponents'; 
 import { toast } from 'sonner';
-import { ChevronDown, Search } from 'lucide-react';
+import { ChevronDown, UploadCloud } from 'lucide-react';
 
 // ==============================================================================
 // COMPONENTE: Menú Desplegable con Buscador (Autocomplete)
@@ -12,18 +12,15 @@ const SearchableSelect = ({ options, value, onChange, placeholder, displayKey, v
     const [searchTerm, setSearchTerm] = useState('');
     const wrapperRef = useRef(null);
 
-    // Sincronizar el texto mostrado con el valor real seleccionado
     useEffect(() => {
         const selected = options.find(opt => opt[valueKey] === value);
         setSearchTerm(selected ? selected[displayKey] : '');
     }, [value, options, displayKey, valueKey]);
 
-    // Cerrar al hacer clic fuera
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
                 setIsOpen(false);
-                // Si hizo clic fuera y no había seleccionado nada válido, regresar al valor previo
                 const selected = options.find(opt => opt[valueKey] === value);
                 setSearchTerm(selected ? selected[displayKey] : '');
             }
@@ -47,7 +44,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder, displayKey, v
                     onChange={(e) => {
                         setSearchTerm(e.target.value);
                         setIsOpen(true);
-                        onChange(''); // Borra el ID real mientras el usuario escribe
+                        onChange(''); 
                     }}
                     onFocus={() => setIsOpen(true)}
                 />
@@ -79,7 +76,6 @@ const SearchableSelect = ({ options, value, onChange, placeholder, displayKey, v
     );
 };
 
-
 // ==============================================================================
 // FORMULARIO DE NUEVO PROYECTO
 // ==============================================================================
@@ -92,6 +88,13 @@ const NewProjectForm = ({ onProjectAdded }) => {
         fecha_apertura: new Date().toISOString().split('T')[0],
         precio_cotizacion_cliente: '', costo_proveedor: '', cotizacion_cliente_ref: '', 
         po_cliente_ref: '', cotizacion_proveedor_ref: ''
+    });
+
+    // Estados para los archivos PDF
+    const [files, setFiles] = useState({
+        url_cotizacion_cliente: null,
+        url_po_cliente: null,
+        url_cotizacion_proveedor: null
     });
     
     const [loading, setLoading] = useState(false);
@@ -118,6 +121,36 @@ const NewProjectForm = ({ onProjectAdded }) => {
         fetchDropdowns();
     }, []);
 
+    const handleFileChange = (e, field) => {
+        const file = e.target.files[0];
+        setFiles(prev => ({ ...prev, [field]: file }));
+    };
+
+    // Helper para subir archivos a Supabase Storage
+    const uploadFile = async (file, pathRef) => {
+        if (!file) return null;
+        try {
+            const fileExt = file.name.split('.').pop();
+            const filePath = `${pathRef}_${Date.now()}.${fileExt}`;
+            
+            const { error: uploadError } = await supabase.storage
+                .from('documentos_proyectos')
+                .upload(filePath, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('documentos_proyectos')
+                .getPublicUrl(filePath);
+
+            return publicUrl;
+        } catch (err) {
+            console.error("Error uploading file:", err);
+            toast.error(`Error al subir el archivo ${file.name}`);
+            return null;
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true); 
@@ -132,21 +165,7 @@ const NewProjectForm = ({ onProjectAdded }) => {
                 throw new Error("Por favor, selecciona opciones válidas del catálogo para Planta, Servicio y Proveedor.");
             }
 
-            // 1. Deducción automática del Cliente basado en la Planta seleccionada
-            let deducedClienteId = null;
-            const { data: clienteData, error: clienteError } = await supabase
-                .from('usuarios')
-                .select('id')
-                .eq('rol', 'cliente')
-                .eq('estado_empleado', 'Activo')
-                .contains('plantasAsociadas', `[{"id": "${formData.planta_id}"}]`)
-                .maybeSingle(); // maybeSingle para no lanzar error crítico si ninguna persona tiene la planta
-
-            if (clienteData) {
-                deducedClienteId = clienteData.id;
-            }
-
-            // 2. Generar el NPU (Ahora sin ID del cliente)
+            // 1. Generar el NPU
             const anioActual = new Date(formData.fecha_apertura).getFullYear();
             let { data: contadorData, error: countError } = await supabase.from('contadores_npu').select('*').eq('anio', anioActual).single();
             
@@ -160,20 +179,24 @@ const NewProjectForm = ({ onProjectAdded }) => {
 
             const consecutivoFormateado = consecutivoActual.toString().padStart(3, '0');
             const ultimosDos = anioActual.toString().slice(-2);
-            // NPU: Planta - Servicio - Proveedor - ConsecutivoAnio
             const npu = `${planta.planta_id_numerico}-${servicio.servicio_id_numerico}-${proveedor.proveedor_id_numerico}-${consecutivoFormateado}${ultimosDos}`;
+
+            // 2. Subir Archivos si existen
+            const urlCotizacionCliente = await uploadFile(files.url_cotizacion_cliente, `${npu}_cot_cliente`);
+            const urlPOCliente = await uploadFile(files.url_po_cliente, `${npu}_po_cliente`);
+            const urlCotizacionProveedor = await uploadFile(files.url_cotizacion_proveedor, `${npu}_cot_proveedor`);
 
             // 3. Evaluar estado inicial
             const tienePO = formData.po_cliente_ref && formData.po_cliente_ref.trim() !== '';
             const estadoInicial = tienePO ? 'Activo' : 'Cotización';
             const fechaDeActivacion = tienePO ? formData.fecha_apertura : null;
 
-            // 4. Insertar Proyecto
+            // 4. Insertar Proyecto (Enviando nombre_estudio dinámicamente)
             const { error: insertError } = await supabase.from('proyectos_v2').insert([{
-                cliente_id: deducedClienteId, // Deducción automática
                 planta_id: formData.planta_id,
                 servicio_id: formData.servicio_id,
                 proveedor_id: formData.proveedor_id,
+                nombre_estudio: servicio.nombre_servicio, // <--- DATO OBLIGATORIO AÑADIDO AQUI
                 npu: npu,
                 estado: estadoInicial,
                 fecha_apertura: formData.fecha_apertura,
@@ -183,6 +206,9 @@ const NewProjectForm = ({ onProjectAdded }) => {
                 cotizacion_cliente_ref: formData.cotizacion_cliente_ref,
                 po_cliente_ref: formData.po_cliente_ref,
                 cotizacion_proveedor_ref: formData.cotizacion_proveedor_ref,
+                url_cotizacion_cliente: urlCotizacionCliente,
+                url_po_cliente: urlPOCliente,
+                url_cotizacion_proveedor: urlCotizacionProveedor,
                 comentarios_apertura: formData.comentarios_apertura
             }]);
 
@@ -196,6 +222,11 @@ const NewProjectForm = ({ onProjectAdded }) => {
                 fecha_apertura: new Date().toISOString().split('T')[0],
                 precio_cotizacion_cliente: '', costo_proveedor: '', cotizacion_cliente_ref: '', 
                 po_cliente_ref: '', cotizacion_proveedor_ref: ''
+            });
+            setFiles({
+                url_cotizacion_cliente: null,
+                url_po_cliente: null,
+                url_cotizacion_proveedor: null
             });
             
             if(onProjectAdded) onProjectAdded();
@@ -215,7 +246,7 @@ const NewProjectForm = ({ onProjectAdded }) => {
             
             <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
                 
-                {/* FILA 1: FECHA Y CATÁLOGOS CON BUSCADOR (SIN CLIENTE) */}
+                {/* FILA 1: FECHA Y CATÁLOGOS CON BUSCADOR */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-muted/20 p-5 rounded-xl border border-border">
                     <div>
                         <label className="block text-[11px] font-bold text-muted-foreground mb-1 uppercase">Fecha (Apertura)</label>
@@ -249,9 +280,9 @@ const NewProjectForm = ({ onProjectAdded }) => {
 
                 {/* FILA 2: DATOS FINANCIEROS Y REFERENCIAS */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Bloque Cliente */}
+                    {/* Bloque Planta (Antes Cliente) */}
                     <div className="space-y-4 border border-border p-4 rounded-xl bg-card">
-                        <h4 className="font-bold text-sm text-foreground uppercase border-b border-border pb-2">Información del Cliente</h4>
+                        <h4 className="font-bold text-sm text-foreground uppercase border-b border-border pb-2">Información del Cliente / Planta</h4>
                         <div>
                             <label className="block text-xs text-muted-foreground mb-1">Precio Cotización (con IVA)</label>
                             <input type="number" placeholder="$ 0.00" value={formData.precio_cotizacion_cliente} onChange={e => setFormData({...formData, precio_cotizacion_cliente: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
@@ -260,10 +291,41 @@ const NewProjectForm = ({ onProjectAdded }) => {
                             <label className="block text-xs text-muted-foreground mb-1">Ref. Cotización Cliente</label>
                             <input type="text" placeholder="Ej: COT-2024-001" value={formData.cotizacion_cliente_ref} onChange={e => setFormData({...formData, cotizacion_cliente_ref: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
                         </div>
-                        <div className="bg-accent/5 p-4 rounded-lg border border-accent/20">
+                        
+                        {/* Subida dinámica de Cotización Cliente */}
+                        {formData.cotizacion_cliente_ref.trim() !== '' && (
+                            <div className="mt-2 pl-2 border-l-2 border-accent animate-in slide-in-from-top-2">
+                                <label className="block text-[10px] font-bold text-primary uppercase mb-1 flex items-center">
+                                    <UploadCloud className="w-3 h-3 mr-1" /> Adjuntar PDF de Cotización
+                                </label>
+                                <input 
+                                    type="file" 
+                                    accept=".pdf"
+                                    onChange={(e) => handleFileChange(e, 'url_cotizacion_cliente')}
+                                    className="w-full text-xs file:bg-primary/10 file:text-primary file:border-0 file:rounded file:px-2 file:py-1 cursor-pointer" 
+                                />
+                            </div>
+                        )}
+
+                        <div className="bg-accent/5 p-4 rounded-lg border border-accent/20 mt-4">
                             <label className="block text-xs text-primary font-bold mb-1 uppercase">Orden de Compra (PO)</label>
                             <p className="text-[12px] text-muted-foreground mb-2">Llenarlo activará el proyecto. Déjalo si es una cotización.</p>
                             <input type="text" placeholder="Nº de PO..." value={formData.po_cliente_ref} onChange={e => setFormData({...formData, po_cliente_ref: e.target.value})} className="w-full p-2 border border-accent/30 rounded-lg bg-background font-mono text-sm focus:ring-1 focus:ring-accent outline-none" />
+                            
+                            {/* Subida dinámica de PO Cliente */}
+                            {formData.po_cliente_ref.trim() !== '' && (
+                                <div className="mt-3 animate-in fade-in">
+                                    <label className="block text-[10px] font-bold text-primary uppercase mb-1 flex items-center">
+                                        <UploadCloud className="w-3 h-3 mr-1" /> Adjuntar PDF de PO
+                                    </label>
+                                    <input 
+                                        type="file" 
+                                        accept=".pdf"
+                                        onChange={(e) => handleFileChange(e, 'url_po_cliente')}
+                                        className="w-full text-xs file:bg-primary/10 file:text-primary file:border-0 file:rounded file:px-2 file:py-1 cursor-pointer" 
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
                     
@@ -278,8 +340,24 @@ const NewProjectForm = ({ onProjectAdded }) => {
                             <label className="block text-xs text-muted-foreground mb-1">Ref. Cotización Proveedor</label>
                             <input type="text" placeholder="Ej: PROV-456" value={formData.cotizacion_proveedor_ref} onChange={e => setFormData({...formData, cotizacion_proveedor_ref: e.target.value})} className="w-full p-2 border rounded-lg text-sm" />
                         </div>
+
+                        {/* Subida dinámica de Cotización Proveedor */}
+                        {formData.cotizacion_proveedor_ref.trim() !== '' && (
+                            <div className="mt-2 pl-2 border-l-2 border-accent animate-in slide-in-from-top-2">
+                                <label className="block text-[10px] font-bold text-primary uppercase mb-1 flex items-center">
+                                    <UploadCloud className="w-3 h-3 mr-1" /> Adjuntar PDF Cot. Proveedor
+                                </label>
+                                <input 
+                                    type="file" 
+                                    accept=".pdf"
+                                    onChange={(e) => handleFileChange(e, 'url_cotizacion_proveedor')}
+                                    className="w-full text-xs file:bg-primary/10 file:text-primary file:border-0 file:rounded file:px-2 file:py-1 cursor-pointer" 
+                                />
+                            </div>
+                        )}
+
                         <div>
-                            <label className="block text-xs text-muted-foreground mb-1">Comentarios de Apertura (Opcional)</label>
+                            <label className="block text-xs text-muted-foreground mb-1 mt-4">Comentarios de Apertura (Opcional)</label>
                             <textarea rows="3" placeholder="Notas internas..." value={formData.comentarios_apertura} onChange={e => setFormData({...formData, comentarios_apertura: e.target.value})} className="w-full p-2 border rounded-lg resize-none text-sm" />
                         </div>
                     </div>

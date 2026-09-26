@@ -36,6 +36,105 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
     // Estados nuevos para Supervisor
     const [activeTechs, setActiveTechs] = useState([]);
     const [nuevosDias, setNuevosDias] = useState('');
+    // Control visual para desplegar la zona de peligro
+    const [showReassign, setShowReassign] = useState(false);
+    const [loadingAction, setLoadingAction] = useState(false);
+
+    // Acción A: Solo guarda la nota
+    const handleUpdateNote = async () => {
+        setLoadingAction(true);
+        try {
+            const { error } = await supabase
+                .from('proyectos_v2')
+                .update({ notas_supervisor: formData.notas_supervisor })
+                .eq('id', project.id);
+            if (error) throw error;
+            toast.success("Nota actualizada correctamente.");
+            onFinalized(); // Refresca el dashboard
+        } catch (error) {
+            toast.error("Error al actualizar la nota.");
+        } finally {
+            setLoadingAction(false);
+        }
+    };
+    
+    // ==========================================
+    // ACCIÓN: GESTIONAR ASIGNACIÓN Y TIEMPOS
+    // ==========================================
+    const handleReassign = async () => {
+        if (!asignarDias || asignarDias <= 0) {
+            return toast.error("Debes asignar una cantidad válida de días hábiles.");
+        }
+
+        setLoadingAction(true);
+        try {
+            // 1. Calcular la nueva fecha de entrega del proyecto (saltando fines de semana)
+            let date = new Date();
+            let daysAdded = 0;
+            const totalDays = parseInt(asignarDias, 10);
+
+            while (daysAdded < totalDays) {
+                date.setDate(date.getDate() + 1);
+                if (date.getDay() !== 0 && date.getDay() !== 6) daysAdded++;
+            }
+            const nuevaFechaLimite = date.toISOString().split('T')[0];
+
+            const updatePayload = {
+                dias_asignados_tecnico: totalDays,
+                fecha_entrega_interna: nuevaFechaLimite
+            };
+
+            // 2. Si realmente se cambió de técnico, aplicamos la auditoría de métricas
+            if (selectedTech && selectedTech !== project.tecnico_id) {
+                
+                // A) Guardar el historial matemático del técnico saliente (Penalización)
+                if (project.tecnico_id) {
+                    await supabase.from('rendimiento_tecnicos').insert([{
+                        tecnico_id: project.tecnico_id,
+                        proyecto_id: project.id,
+                        npu_proyecto: project.npu,
+                        dias_asignados: project.dias_asignados_tecnico || 0,
+                        dias_trabajados_reales: project.dias_reales_trabajados || 0,
+                        resultado: 'Reasignado (Penalización)'
+                    }]);
+                }
+
+                // B) Dejar evidencia de texto en la bitácora del proyecto (para contexto humano)
+                const nombreViejo = project.usuarios?.nombre || 'Técnico anterior';
+                const nombreNuevo = activeTechs.find(t => t.id === selectedTech)?.nombre || 'Nuevo Técnico';
+                const bitacoraMensaje = `⚠️ REASIGNACIÓN DE PROYECTO\nEl técnico ${nombreViejo} fue relevado. Consumió ${project.dias_reales_trabajados || 0} días de los ${project.dias_asignados_tecnico || 0} asignados.\nAsignado a: ${nombreNuevo} (Meta: ${totalDays} días nuevos).`;
+
+                await supabase.from('bitacoras_proyectos').insert([{
+                    proyecto_id: project.id,
+                    autor_id: currentUser.id, // ID del supervisor que hizo el cambio
+                    mensaje: bitacoraMensaje
+                }]);
+
+                // C) Reiniciar los contadores de ejecución para el nuevo técnico
+                updatePayload.tecnico_id = selectedTech;
+                updatePayload.dias_reales_trabajados = 0; 
+                updatePayload.estado_operativo = 'Pendiente'; 
+                updatePayload.ultimo_inicio_proceso = null;
+            }
+
+            // 3. Actualizar la tabla principal del proyecto
+            const { error } = await supabase
+                .from('proyectos_v2')
+                .update(updatePayload)
+                .eq('id', project.id);
+                
+            if (error) throw error;
+            
+            toast.success(selectedTech !== project.tecnico_id ? "Proyecto reasignado y métricas registradas." : "Tiempos actualizados correctamente.");
+            setShowReassign(false);
+            onFinalized();
+        } catch (error) {
+            toast.error("Error al actualizar la asignación.");
+            console.error(error);
+        } finally {
+            setLoadingAction(false);
+        }
+    };
 
     const esProyectoCompletado = project.estado?.toLowerCase() === 'completado' || project.estado?.toLowerCase() === 'terminado';
 
@@ -258,65 +357,93 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                         </div>
                     ) : (
                         <>
-                            {/* =======================
-                                VISTA SUPERVISOR
-                            ======================== */}
+                            {/* VISTA SUPERVISOR */}
                             {userRole === 'supervisor' && (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Prioridad</label>
-                                            <select name="prioridad" value={formData.prioridad} onChange={handleChange} className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent">
-                                                <option value="1 - Normal">Normal</option>
-                                                <option value="2 - Alta">Alta</option>
-                                                <option value="3 - Urgente">Urgente</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Reasignar Técnico</label>
-                                            <select name="tecnico_id" value={formData.tecnico_id} onChange={handleChange} className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent">
-                                                <option value="">Mantener actual...</option>
-                                                {activeTechs.map(t => (
-                                                    <option key={t.id} value={t.id}>{t.nombre}</option>
-                                                ))}
-                                            </select>
+                                <div className="space-y-6 animate-in fade-in">
+                                    
+                                    <div className="bg-muted/10 border border-border p-5 rounded-xl shadow-sm">
+                                        <label className="block text-xs font-bold mb-3 text-primary uppercase tracking-wider">Notas / Instrucciones al Técnico</label>
+                                        <textarea 
+                                            name="notas_supervisor" 
+                                            value={formData.notas_supervisor || ''} 
+                                            onChange={handleChange} 
+                                            rows="4" 
+                                            placeholder="Agrega instrucciones, requerimientos o detalles específicos para el técnico..." 
+                                            className="w-full p-3 border border-border rounded-lg bg-background text-sm outline-none focus:ring-2 focus:ring-accent resize-none mb-3"
+                                        ></textarea>
+                                        <div className="flex justify-end">
+                                            <button 
+                                                onClick={handleUpdateNote} 
+                                                disabled={loadingAction}
+                                                className="bg-accent text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-accent/90 transition-colors shadow-sm disabled:opacity-50"
+                                            >
+                                                {loadingAction ? 'Guardando...' : 'Guardar Nota'}
+                                            </button>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        {/* Condición para mostrar Días o Fecha Límite */}
-                                        {formData.tecnico_id !== project.tecnico_id && formData.tecnico_id !== '' ? (
-                                            <div className="col-span-2">
-                                                <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase text-accent">Nuevos Días Asignados</label>
-                                                <input type="number" value={nuevosDias} onChange={e => setNuevosDias(e.target.value)} placeholder="Ej. 3" className="w-full p-2.5 border border-accent/50 rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent"/>
-                                                <p className="text-[10px] text-muted-foreground mt-1">El rendimiento del técnico anterior no afectará al nuevo.</p>
+                                    <div className="bg-muted/10 border border-border p-5 rounded-xl shadow-sm">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div>
+                                                <p className="text-xs font-bold text-primary uppercase tracking-wider">Cambiar de Técnico</p>
+                                                <p className="text-[11px] text-muted-foreground mt-1">Reasigna el proyecto o modifica los tiempos de entrega.</p>
                                             </div>
-                                        ) : (
-                                            <div className="col-span-2">
-                                                <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Modificar Fecha Límite Interna</label>
-                                                <input type="date" name="fecha_entrega_interna" value={formData.fecha_entrega_interna} onChange={handleChange} className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent"/>
+                                            {!showReassign && (
+                                                <button 
+                                                    onClick={() => setShowReassign(true)}
+                                                    className="bg-primary/10 text-primary hover:bg-primary/20 px-4 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 ml-4 shadow-sm"
+                                                >
+                                                    Modificar
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {showReassign && (
+                                            <div className="border-t border-border pt-5 mt-4 space-y-5 animate-in fade-in slide-in-from-top-2">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold mb-1.5 text-muted-foreground uppercase">Nuevo Técnico</label>
+                                                        <select 
+                                                            name="tecnico_id" 
+                                                            value={formData.tecnico_id} 
+                                                            onChange={handleChange} 
+                                                            className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-2 focus:ring-accent"
+                                                        >
+                                                            <option value={project.tecnico_id || ''}>Mantener actual...</option>
+
+                                                            {activeTechs
+                                                                .filter(t => t.id !== project.tecnico_id)
+                                                                .map(t => (
+                                                                    <option key={t.id} value={t.id}>{t.nombre}</option>
+                                                                ))
+                                                            }
+                                                        </select>
+                                                    </div>
+
+                                                    {formData.tecnico_id !== project.tecnico_id && formData.tecnico_id !== '' ? (
+                                                        <div>
+                                                            <label className="block text-[11px] font-bold mb-1.5 text-accent uppercase">Días Asignados al Nuevo Tecnico</label>
+                                                            <input type="number" min="1" value={nuevosDias} onChange={e => setNuevosDias(e.target.value)} placeholder="Ej. 3" className="w-full p-2.5 border border-accent/50 rounded-lg bg-background text-sm outline-none focus:ring-2 focus:ring-accent"/>
+                                                            <p className="text-[10px] text-muted-foreground mt-1.5 leading-tight">Dias de trabajo para este proyecto.</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <label className="block text-[11px] font-bold mb-1.5 text-muted-foreground uppercase">Extender/Modificar Fecha</label>
+                                                            <input type="date" name="fecha_entrega_interna" value={formData.fecha_entrega_interna} onChange={handleChange} className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-2 focus:ring-accent"/>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="flex justify-end gap-3 pt-3">
+                                                    <button onClick={() => setShowReassign(false)} className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-lg transition-colors">
+                                                        Cancelar
+                                                    </button>
+                                                    <button onClick={handleReassign} disabled={loadingAction} className="bg-orange-500 text-white px-5 py-2 rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors shadow-sm disabled:opacity-50">
+                                                        {loadingAction ? 'Aplicando...' : 'Confirmar Cambios'}
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-bold mb-1 text-muted-foreground uppercase">Notas/Instrucciones del Supervisor</label>
-                                        <textarea name="notas_supervisor" value={formData.notas_supervisor} onChange={handleChange} rows="3" className="w-full p-2.5 border border-border rounded-lg bg-background text-sm outline-none focus:ring-1 focus:ring-accent"></textarea>
-                                    </div>
-
-                                    <div className="pt-4 border-t border-border mt-6">
-                                        <label className="block text-sm font-bold mb-2 text-primary">Historial de Bitácoras (Técnico)</label>
-                                        <div className="bg-muted/20 border border-border rounded-lg p-4 h-48 overflow-y-auto space-y-3">
-                                            {loadingLogs ? <p className="text-sm text-muted-foreground animate-pulse">Cargando bitácora...</p> : 
-                                                logEntries.length > 0 ? logEntries.map(entry => (
-                                                <div key={entry.id} className="text-sm bg-background border border-border p-3 rounded-lg shadow-sm">
-                                                    <p className="text-foreground whitespace-pre-wrap font-medium">{entry.mensaje}</p>
-                                                    <p className="text-muted-foreground mt-2 text-xs font-bold text-right border-t border-border pt-1">
-                                                        {entry.usuarios?.nombre} - {new Date(entry.creado_en).toLocaleString('es-MX')}
-                                                    </p>
-                                                </div>
-                                            )) : <p className="text-sm text-muted-foreground text-center pt-4">El técnico aún no ha reportado avances.</p>}
-                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -372,16 +499,31 @@ export const ProjectManagementModal = ({ project, onClose, onUpdate, userRole })
                 </div>
 
                 <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-border bg-card">
-                    <button onClick={onClose} className="px-5 py-2 rounded-lg font-bold text-muted-foreground hover:bg-muted transition-colors text-sm">Cancelar</button>
-                    
-                    {esProyectoCompletado && userRole === 'administrador' ? (
-                        <button onClick={handleReactivar} disabled={loading || uploadingDoc} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md text-sm disabled:opacity-50">
-                            {loading ? 'Reactivando...' : 'Reactivar Proyecto'}
-                        </button>
+                    {userRole === 'administrador' ? (
+                        <div className="flex justify-end gap-3 mt-4 pt-6 pb-2 border-t border-border bg-card">
+                            <button onClick={onClose} className="px-5 py-2 rounded-lg font-bold text-muted-foreground hover:bg-muted transition-colors text-sm">
+                                Cancelar
+                            </button>
+                            
+                            {esProyectoCompletado ? (
+                                <button onClick={handleReactivar} disabled={loading || uploadingDoc} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md text-sm disabled:opacity-50">
+                                    {loading ? 'Reactivando...' : 'Reactivar Proyecto'}
+                                </button>
+                            ) : (
+                                <button onClick={handleSave} disabled={loading || uploadingDoc} className="bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md text-sm disabled:opacity-50">
+                                    {loading ? 'Guardando...' : 'Guardar Cambios'}
+                                </button>
+                            )}
+                        </div>
                     ) : (
-                        <button onClick={handleSave} disabled={loading || uploadingDoc} className="bg-accent hover:bg-accent/90 text-primary-foreground font-bold py-2 px-6 rounded-lg transition-colors shadow-md text-sm disabled:opacity-50">
-                            {loading ? 'Guardando...' : 'Guardar Cambios'}
-                        </button>
+                        <div className="mt-4 pt-4 pb-2 border-t border-border flex justify-end bg-card">
+                            <button 
+                                onClick={onClose} 
+                                className="px-8 py-2 bg-muted-foreground/10 text-muted-foreground font-bold rounded-lg hover:bg-muted-foreground/20 transition-colors shadow-sm text-sm"
+                            >
+                                Salir
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>

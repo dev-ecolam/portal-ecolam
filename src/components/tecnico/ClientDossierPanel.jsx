@@ -1,60 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../../supabase/client';
 import { toast } from 'sonner';
-import { X, FileText, Upload, AlertTriangle, Trash2, Download, Edit3, Save, Info } from 'lucide-react';
+import { X, FileText, Download, Edit3, Save, FileArchive } from 'lucide-react';
 
-export const ClientDossierPanel = ({ clienteId, plantaId, plantaNombre, currentUser, onClose }) => {
-    // Estados Documentos
-    const [documentos, setDocumentos] = useState([]);
-    const [loadingDocs, setLoadingDocs] = useState(true);
-    const [uploading, setUploading] = useState(false);
-    
+export const ClientDossierPanel = ({ plantaId, plantaNombre, currentUser, onClose }) => {
     // Estados Datos de Planta
     const [plantaData, setPlantaData] = useState({});
     const [isEditingPlanta, setIsEditingPlanta] = useState(false);
     const [loadingPlanta, setLoadingPlanta] = useState(true);
 
-    // Formulario de subida de Docs
-    const [file, setFile] = useState(null);
-    const [categoria, setCategoria] = useState('Acta Constitutiva');
-    const [descripcionOtro, setDescripcionOtro] = useState('');
-
-    const CATEGORIAS_DOCS = [
-        "Acta Constitutiva",
-        "Poderes del representante legal",
-        "Identificación del representante legal",
-        "Comprobante de domicilio",
-        "Planos catastrales",
-        "Planos generales",
-        "Otro"
-    ];
+    // Estados Estudios/Proyectos (PDFs) y Editables (.rar)
+    const [estudios, setEstudios] = useState([]);
+    const [editables, setEditables] = useState([]);
+    const [loadingEstudios, setLoadingEstudios] = useState(true);
+    const [loadingEditables, setLoadingEditables] = useState(true);
 
     useEffect(() => {
         if (plantaId) {
-            fetchDocumentos();
             fetchPlantaData();
+            fetchEstudiosRecientes();
+            fetchEditables();
         } else {
-            setLoadingDocs(false);
             setLoadingPlanta(false);
+            setLoadingEstudios(false);
+            setLoadingEditables(false);
         }
     }, [plantaId]);
-
-    const fetchDocumentos = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('documentos_clientes')
-                .select('*, usuarios(nombre)')
-                .eq('planta_id', plantaId)
-                .order('creado_en', { ascending: false });
-            
-            if (error) throw error;
-            setDocumentos(data || []);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoadingDocs(false);
-        }
-    };
 
     const fetchPlantaData = async () => {
         try {
@@ -62,19 +33,65 @@ export const ClientDossierPanel = ({ clienteId, plantaId, plantaNombre, currentU
                 .from('plantas')
                 .select('*')
                 .eq('id', plantaId)
-                .single();
+                .maybeSingle();
             
             if (error) throw error;
-            setPlantaData(data || {});
-            
-            // Si la mayoría de los campos están vacíos, activar edición por defecto
-            if (!data.rfc && !data.domicilio_fiscal) {
-                setIsEditingPlanta(true);
+            if (data) {
+                setPlantaData(data);
+                // Se eliminó la regla que abría automáticamente la edición
             }
         } catch (err) {
             console.error("Error al cargar planta", err);
         } finally {
             setLoadingPlanta(false);
+        }
+    };
+
+    const fetchEstudiosRecientes = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('proyectos_v2')
+                .select('id, servicio_id, servicios(nombre_servicio), url_estudio_r2, fecha_vencimiento, fecha_apertura')
+                .eq('planta_id', plantaId)
+                .not('url_estudio_r2', 'is', null) 
+                .order('fecha_apertura', { ascending: false }); 
+            
+            if (error) throw error;
+
+            const uniqueServices = [];
+            const seenServices = new Set();
+            
+            if (data) {
+                data.forEach(proj => {
+                    if (!seenServices.has(proj.servicio_id)) {
+                        seenServices.add(proj.servicio_id);
+                        uniqueServices.push(proj);
+                    }
+                });
+            }
+            setEstudios(uniqueServices);
+        } catch (err) {
+            console.error("Error al cargar estudios:", err);
+        } finally {
+            setLoadingEstudios(false);
+        }
+    };
+
+    const fetchEditables = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('documentos_clientes')
+                .select('*')
+                .eq('planta_id', plantaId)
+                .eq('categoria', 'Editable') // Buscamos solo los archivos base .rar/.zip
+                .order('creado_en', { ascending: false });
+            
+            if (error) throw error;
+            setEditables(data || []);
+        } catch (err) {
+            console.error("Error al cargar editables:", err);
+        } finally {
+            setLoadingEditables(false);
         }
     };
 
@@ -89,7 +106,7 @@ export const ClientDossierPanel = ({ clienteId, plantaId, plantaNombre, currentU
             const { error } = await supabase
                 .from('plantas')
                 .update({
-                    nombre_planta: plantaData.nombre_planta, // Razón Social
+                    // nombre_planta se excluye a propósito para evitar sobreescritura accidental
                     nombre_comercial: plantaData.nombre_comercial,
                     rfc: plantaData.rfc,
                     domicilio_fiscal: plantaData.domicilio_fiscal,
@@ -100,7 +117,7 @@ export const ClientDossierPanel = ({ clienteId, plantaId, plantaNombre, currentU
                     correo_contacto: plantaData.correo_contacto,
                     giro_empresa: plantaData.giro_empresa,
                     representante_legal: plantaData.representante_legal,
-                    peticion_modificacion: false // Se limpia la petición si se guarda con éxito
+                    peticion_modificacion: false
                 })
                 .eq('id', plantaId);
 
@@ -115,61 +132,23 @@ export const ClientDossierPanel = ({ clienteId, plantaId, plantaNombre, currentU
         }
     };
 
-    // Subida de Documentos
-    const handleUpload = async (e) => {
-        e.preventDefault();
-        if (!file) return toast.error("Selecciona un archivo.");
-        
-        const nombreFinalDoc = categoria === 'Otro' && descripcionOtro.trim() ? descripcionOtro : categoria;
-
-        setUploading(true);
-        try {
-            const filePath = `${plantaId}/${Date.now()}_${file.name}`;
-            
-            const { error: uploadError } = await supabase.storage
-                .from('documentos_clientes')
-                .upload(filePath, file);
-
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('documentos_clientes')
-                .getPublicUrl(filePath);
-
-            const { error: dbError } = await supabase
-                .from('documentos_clientes')
-                .insert([{
-                    planta_id: plantaId,
-                    nombre_archivo: nombreFinalDoc,
-                    categoria: categoria,
-                    url_archivo: publicUrl,
-                    path_archivo: filePath,
-                    subido_por: currentUser.id
-                }]);
-
-            if (dbError) throw dbError;
-
-            toast.success("Documento agregado al expediente.");
-            setFile(null);
-            setCategoria('Acta Constitutiva');
-            setDescripcionOtro('');
-            fetchDocumentos();
-        } catch (err) {
-            toast.error("Error al subir el documento.");
-        } finally {
-            setUploading(false);
+    const handleEditClick = () => {
+        if (plantaData.rfc || plantaData.nombre_comercial) {
+            toast.warning("Advertencia: Esta planta ya tiene datos registrados, ten cuidado al modificarlos.");
         }
+        setIsEditingPlanta(true);
     };
 
-    const solicitarBorrado = async (docId) => {
-        try {
-            await supabase.from('documentos_clientes').update({ solicitud_borrado: true }).eq('id', docId);
-            toast.success("Solicitud de eliminación enviada.");
-            fetchDocumentos();
-        } catch (err) {
-            toast.error("Error al solicitar el borrado.");
-        }
-    };
+    const DataItem = ({ label, value }) => (
+        <div className="flex flex-col">
+            <span className="text-[10px] font-bold text-muted-foreground uppercase">{label}</span>
+            {value ? (
+                <span className="text-sm font-medium text-foreground select-all">{value}</span>
+            ) : (
+                <span className="text-sm italic text-muted-foreground/60">(Falta este dato)</span>
+            )}
+        </div>
+    );
 
     return (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -181,7 +160,7 @@ export const ClientDossierPanel = ({ clienteId, plantaId, plantaNombre, currentU
                 <div className="flex items-center justify-between p-6 border-b border-border bg-muted/30 shrink-0">
                     <div>
                         <h2 className="text-xl font-bold text-primary flex items-center">
-                            Expediente Completo
+                            Expediente del Cliente
                         </h2>
                         <p className="text-sm font-medium text-accent">{plantaNombre || 'Planta'}</p>
                     </div>
@@ -190,178 +169,214 @@ export const ClientDossierPanel = ({ clienteId, plantaId, plantaNombre, currentU
                     </button>
                 </div>
 
-                {/* Banner de Aviso */}
-                <div className="bg-amber-100/50 border-y border-amber-200 p-3 shrink-0">
-                    <p className="text-xs text-amber-800 font-bold flex items-center justify-center text-center">
-                        <Info className="w-4 h-4 mr-2" />
-                        En caso de haber cambios en la estructura, representantes o datos fiscales, por favor solicita la modificación o actualiza los datos aquí mismo.
-                    </p>
-                </div>
-
                 {/* Área Scrolleable */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-8">
                     
-                    {/* SECCIÓN 1: DATOS GENERALES (Planta) */}
+                    {/* SECCIÓN 1: DATOS GENERALES */}
                     <div>
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Datos Generales y Fiscales</h3>
-                            {!isEditingPlanta && (
-                                <button onClick={() => setIsEditingPlanta(true)} className="flex items-center text-xs font-bold text-primary hover:underline bg-primary/10 px-3 py-1.5 rounded-lg">
-                                    <Edit3 className="w-3.5 h-3.5 mr-1" /> Modificar Datos
-                                </button>
-                            )}
                         </div>
 
                         {loadingPlanta ? (
                             <p className="text-sm animate-pulse">Cargando datos...</p>
                         ) : (
-                            <div className="bg-muted/10 border border-border rounded-xl p-4 space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Razón Social</label>
-                                        <input type="text" name="nombre_planta" value={plantaData.nombre_planta || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Nombre Comercial</label>
-                                        <input type="text" name="nombre_comercial" value={plantaData.nombre_comercial || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">RFC</label>
-                                        <input type="text" name="rfc" value={plantaData.rfc || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Representante Legal</label>
-                                        <input type="text" name="representante_legal" value={plantaData.representante_legal || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Domicilio Fiscal</label>
-                                        <input type="text" name="domicilio_fiscal" value={plantaData.domicilio_fiscal || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Ciudad / Estado</label>
-                                        <input type="text" name="ciudad_estado" value={plantaData.ciudad_estado || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Giro de Empresa</label>
-                                        <input type="text" name="giro_empresa" value={plantaData.giro_empresa || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                </div>
-                                
-                                <hr className="border-border my-2" />
-                                <h4 className="text-xs font-bold text-primary uppercase">Datos de Contacto en Planta</h4>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Contacto / Encargado</label>
-                                        <input type="text" name="contacto_encargado" value={plantaData.contacto_encargado || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Puesto</label>
-                                        <input type="text" name="puesto_contacto" value={plantaData.puesto_contacto || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Teléfono</label>
-                                        <input type="text" name="telefono_contacto" value={plantaData.telefono_contacto || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Correo Electrónico</label>
-                                        <input type="email" name="correo_contacto" value={plantaData.correo_contacto || ''} onChange={handlePlantaChange} disabled={!isEditingPlanta} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background disabled:bg-muted/50 disabled:text-muted-foreground" />
-                                    </div>
-                                </div>
-
-                                {isEditingPlanta && (
-                                    <div className="flex justify-end pt-3">
-                                        <button onClick={handleSavePlanta} className="bg-primary text-primary-foreground text-sm font-bold py-2 px-6 rounded-md hover:bg-primary/90 flex items-center shadow-md">
-                                            <Save className="w-4 h-4 mr-2" /> Guardar Cambios Generales
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* SECCIÓN 2: DOCUMENTOS LEGALES */}
-                    <div className="border-t border-border pt-6">
-                        <h3 className="text-sm font-bold mb-4 uppercase tracking-wider text-muted-foreground">Archivos y Documentos</h3>
-                        
-                        {/* Zona de Subida */}
-                        <form onSubmit={handleUpload} className="bg-muted/30 p-4 rounded-xl border border-border border-dashed space-y-4 mb-6">
-                            <h4 className="text-sm font-bold flex items-center text-primary"><Upload className="w-4 h-4 mr-2" /> Aportar Nuevo Documento</h4>
-                            
-                            <div className="grid grid-cols-1 gap-3">
-                                <select 
-                                    value={categoria} 
-                                    onChange={e => { setCategoria(e.target.value); setDescripcionOtro(''); }} 
-                                    className="w-full px-3 py-2 text-sm font-medium border border-border rounded-md bg-background outline-none focus:border-accent"
-                                >
-                                    {CATEGORIAS_DOCS.map(cat => (
-                                        <option key={cat} value={cat}>{cat}</option>
-                                    ))}
-                                </select>
-                                
-                                {categoria === 'Otro' && (
-                                    <input 
-                                        type="text" 
-                                        placeholder="Especifica qué documento es..." 
-                                        value={descripcionOtro} 
-                                        onChange={e => setDescripcionOtro(e.target.value)}
-                                        className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background outline-none focus:border-accent"
-                                        required
-                                    />
-                                )}
-
-                                <input 
-                                    type="file" 
-                                    onChange={e => setFile(e.target.files[0])} 
-                                    className="w-full text-sm file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
-                                    required
-                                />
-                            </div>
-                            
-                            <button type="submit" disabled={uploading} className="w-full bg-accent text-white text-sm font-bold py-2.5 rounded-md hover:bg-accent/90 transition-colors shadow-sm">
-                                {uploading ? 'Subiendo Archivo...' : 'Subir a Expediente'}
-                            </button>
-                        </form>
-
-                        {/* Lista de Documentos */}
-                        {loadingDocs ? (
-                            <p className="text-sm text-center">Cargando documentos...</p>
-                        ) : documentos.length === 0 ? (
-                            <p className="text-sm text-center text-muted-foreground italic">No hay documentos cargados en el expediente.</p>
-                        ) : (
-                            <div className="space-y-3">
-                                {documentos.map(doc => (
-                                    <div key={doc.id} className="group bg-background border border-border p-3 rounded-lg flex items-start justify-between hover:border-accent transition-colors">
-                                        <div className="flex items-start overflow-hidden">
-                                            <FileText className="w-8 h-8 text-accent mr-3 shrink-0" />
-                                            <div>
-                                                <p className="text-sm font-bold truncate pr-2">{doc.nombre_archivo}</p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className="text-[10px] text-muted-foreground">Subido por {doc.usuarios?.nombre?.split(' ')[0]}</span>
-                                                </div>
+                            <div className="bg-muted/10 border border-border rounded-xl p-5">
+                                {!isEditingPlanta ? (
+                                    /* MODO LECTURA */
+                                    <>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                                            <DataItem label="Razón Social" value={plantaData.nombre_planta} />
+                                            <DataItem label="Nombre Comercial" value={plantaData.nombre_comercial} />
+                                            <DataItem label="RFC" value={plantaData.rfc} />
+                                            <DataItem label="Representante Legal" value={plantaData.representante_legal} />
+                                            <div className="md:col-span-2">
+                                                <DataItem label="Domicilio Fiscal" value={plantaData.domicilio_fiscal} />
                                             </div>
+                                            <DataItem label="Ciudad / Estado" value={plantaData.ciudad_estado} />
+                                            <DataItem label="Giro de Empresa" value={plantaData.giro_empresa} />
+                                        </div>
+                                        <hr className="border-border my-5" />
+                                        <h4 className="text-xs font-bold text-primary uppercase mb-4">Datos de Contacto en Planta</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4">
+                                            <DataItem label="Contacto / Encargado" value={plantaData.contacto_encargado} />
+                                            <DataItem label="Puesto" value={plantaData.puesto_contacto} />
+                                            <DataItem label="Teléfono" value={plantaData.telefono_contacto} />
+                                            <DataItem label="Correo Electrónico" value={plantaData.correo_contacto} />
                                         </div>
                                         
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <a href={doc.url_archivo} target="_blank" rel="noopener noreferrer" className="p-2 text-primary hover:bg-primary/10 rounded-md transition-colors" title="Descargar/Ver">
-                                                <Download className="w-4 h-4" />
-                                            </a>
-                                            
-                                            {doc.solicitud_borrado ? (
-                                                <span className="text-[10px] text-orange-500 font-bold flex items-center px-2" title="Revisión pendiente">
-                                                    <AlertTriangle className="w-3 h-3 mr-1"/> Borrado P.
-                                                </span>
-                                            ) : (
-                                                <button onClick={() => solicitarBorrado(doc.id)} className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors" title="Solicitar Eliminación">
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            )}
+                                        <div className="mt-6 flex justify-end">
+                                            <button onClick={handleEditClick} className="flex items-center text-xs font-bold text-primary hover:underline bg-primary/10 px-4 py-2 rounded-lg transition-colors">
+                                                <Edit3 className="w-4 h-4 mr-2" /> Editar Datos
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    /* MODO EDICIÓN */
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Razón Social <span className="lowercase font-normal text-[10px] text-amber-600">(Bloqueado)</span></label>
+                                                {/* CAMBIO: Se bloqueó el campo de la Razón Social */}
+                                                <input 
+                                                    type="text" 
+                                                    name="nombre_planta" 
+                                                    value={plantaData.nombre_planta || ''} 
+                                                    disabled 
+                                                    className="w-full px-3 py-2 text-sm border border-border rounded-md bg-muted text-muted-foreground cursor-not-allowed outline-none" 
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Nombre Comercial</label>
+                                                <input type="text" name="nombre_comercial" value={plantaData.nombre_comercial || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">RFC</label>
+                                                <input type="text" name="rfc" value={plantaData.rfc || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Representante Legal</label>
+                                                <input type="text" name="representante_legal" value={plantaData.representante_legal || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div className="md:col-span-2">
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Domicilio Fiscal</label>
+                                                <input type="text" name="domicilio_fiscal" value={plantaData.domicilio_fiscal || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Ciudad / Estado</label>
+                                                <input type="text" name="ciudad_estado" value={plantaData.ciudad_estado || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Giro de Empresa</label>
+                                                <input type="text" name="giro_empresa" value={plantaData.giro_empresa || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                        </div>
+                                        <hr className="border-border my-2" />
+                                        <h4 className="text-xs font-bold text-primary uppercase">Datos de Contacto en Planta</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Contacto / Encargado</label>
+                                                <input type="text" name="contacto_encargado" value={plantaData.contacto_encargado || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Puesto</label>
+                                                <input type="text" name="puesto_contacto" value={plantaData.puesto_contacto || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Teléfono</label>
+                                                <input type="text" name="telefono_contacto" value={plantaData.telefono_contacto || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-muted-foreground uppercase mb-1">Correo Electrónico</label>
+                                                <input type="email" name="correo_contacto" value={plantaData.correo_contacto || ''} onChange={handlePlantaChange} className="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:ring-1 focus:ring-accent outline-none" />
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end pt-3 gap-2">
+                                            <button onClick={() => setIsEditingPlanta(false)} className="text-muted-foreground text-sm font-bold py-2 px-4 rounded-md hover:bg-muted transition-colors">
+                                                Cancelar
+                                            </button>
+                                            <button onClick={handleSavePlanta} className="bg-primary text-primary-foreground text-sm font-bold py-2 px-6 rounded-md hover:bg-primary/90 flex items-center shadow-md">
+                                                <Save className="w-4 h-4 mr-2" /> Guardar
+                                            </button>
                                         </div>
                                     </div>
-                                ))}
+                                )}
                             </div>
                         )}
                     </div>
+
+                    {/* SECCIÓN 2: ESTUDIOS / PDFs (MÁS RECIENTES) */}
+                    <div className="border-t border-border pt-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Estudios Vigentes (PDF)</h3>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {loadingEstudios ? (
+                                <p className="text-sm text-center">Buscando estudios recientes...</p>
+                            ) : estudios.length === 0 ? (
+                                <div className="bg-muted/10 border border-dashed border-border p-6 rounded-lg text-center">
+                                    <FileText className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                                    <p className="text-sm text-muted-foreground italic">No hay PDFs de estudios registrados para esta planta.</p>
+                                </div>
+                            ) : (
+                                estudios.map(estudio => (
+                                    <div key={estudio.id} className="group bg-background border border-border p-4 rounded-lg flex items-center justify-between hover:border-accent transition-colors">
+                                        <div className="flex items-center overflow-hidden">
+                                            <FileText className="w-8 h-8 text-red-500 mr-3 shrink-0" />
+                                            <div>
+                                                <p className="text-sm font-bold text-foreground">
+                                                    {estudio.servicios?.nombre_servicio || 'Servicio Desconocido'}
+                                                </p>
+                                                {estudio.fecha_vencimiento ? (
+                                                    <p className="text-[11px] text-muted-foreground mt-1">
+                                                        Vence: <span className="font-bold">{estudio.fecha_vencimiento}</span>
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-[11px] text-amber-600 mt-1">Sin fecha de vencimiento</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <a 
+                                            href={estudio.url_estudio_r2} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="ml-4 shrink-0 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground p-2 rounded-md transition-colors flex items-center shadow-sm"
+                                            title="Ver PDF"
+                                        >
+                                            <Download className="w-4 h-4 mr-2" />
+                                            <span className="text-xs font-bold">Ver Estudio</span>
+                                        </a>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* SECCIÓN 3: ARCHIVOS EDITABLES (.rar / .zip) */}
+                    <div className="border-t border-border pt-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Archivos Base / Editables</h3>
+                        </div>
+                        
+                        <div className="space-y-3">
+                            {loadingEditables ? (
+                                <p className="text-sm text-center">Buscando editables...</p>
+                            ) : editables.length === 0 ? (
+                                <div className="bg-muted/10 border border-dashed border-border p-6 rounded-lg text-center">
+                                    <FileArchive className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                                    <p className="text-sm text-muted-foreground italic">No hay archivos editables base para esta planta.</p>
+                                </div>
+                            ) : (
+                                editables.map(doc => (
+                                    <div key={doc.id} className="group bg-background border border-border p-4 rounded-lg flex items-center justify-between hover:border-amber-400 transition-colors">
+                                        <div className="flex items-center overflow-hidden">
+                                            <FileArchive className="w-8 h-8 text-amber-500 mr-3 shrink-0" />
+                                            <div>
+                                                <p className="text-sm font-bold text-foreground">
+                                                    {doc.nombre_archivo.replace('Editable_', '').replace(/_[0-9]+$/, '').replace(/_/g, ' ')}
+                                                </p>
+                                                <p className="text-[11px] text-muted-foreground mt-1">
+                                                    Guardado el: <span className="font-bold">{new Date(doc.creado_en).toLocaleDateString()}</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <a 
+                                            href={doc.url_archivo} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer" 
+                                            className="ml-4 shrink-0 bg-amber-100 text-amber-700 hover:bg-amber-500 hover:text-white p-2 rounded-md transition-colors flex items-center shadow-sm"
+                                            title="Descargar Editable"
+                                        >
+                                            <Download className="w-4 h-4 mr-2" />
+                                            <span className="text-xs font-bold">Descargar ZIP/RAR</span>
+                                        </a>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>

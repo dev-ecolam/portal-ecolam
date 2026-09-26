@@ -36,7 +36,7 @@ export const ProjectLogModal = ({ project, userId, onClose }) => {
             // 1. Guardar la Bitácora (Usamos usuario_id para evitar el error)
             const { error: logError } = await supabase.from('bitacoras_proyectos').insert([{
                 proyecto_id: project.id,
-                autor_id: userId, // <--- CÁMBIALO AQUÍ DE VUELTA A autor_id
+                autor_id: userId,
                 mensaje: mensaje.trim()
             }]);
             

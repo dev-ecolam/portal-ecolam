@@ -151,10 +151,9 @@ export const ProjectsTable = ({ projects, userRole, supervisorView, onManageClic
                             ) : (
                                 <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Fecha Alta</th>
                             )}
-                            
-                            <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Planta</th>
+
                             <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">NPU / Estudio</th>
-                            
+                            <th className="px-4 py-3 text-left text-xs font-bold text-muted-foreground uppercase">Planta</th>
                             
                             {userRole === 'administrador' && (
                                 <>
@@ -222,7 +221,7 @@ export const ProjectsTable = ({ projects, userRole, supervisorView, onManageClic
 
                                         {userRole === 'supervisor' && supervisorView === 'techDetail' && (
                                             <td className="px-4 py-3">
-                                                <span className="px-2 py-1 text-[11px] uppercase font-bold rounded-md bg-blue-50 text-blue-700 border border-blue-200">
+                                                <span className="whitespace-nowrap px-2 py-1 text-[11px] uppercase font-bold rounded-md bg-blue-50 text-blue-700 border border-blue-200">
                                                     {project.estado_operativo || 'Pendiente'}
                                                 </span>
                                             </td>
@@ -254,14 +253,33 @@ export const ProjectsTable = ({ projects, userRole, supervisorView, onManageClic
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     
                                                     {/* COLUMNA IZQUIERDA COMPARTIDA: Datos del Proyecto */}
+                                                    
                                                     <div className="space-y-4">
                                                         <div className="bg-muted/30 p-4 rounded-lg border border-border">
                                                             <p className="font-bold text-primary text-xs uppercase mb-1">Servicio a Realizar:</p>
                                                             <p className="text-sm text-foreground whitespace-pre-wrap">{project.nombre_estudio}</p>
                                                         </div>
                                                         <div className="bg-accent/5 p-4 rounded-lg border border-accent/20">
-                                                            <p className="font-bold text-accent text-xs uppercase mb-1">Notas de Apertura (Admin)</p>
+                                                            <p className="font-bold text-accent text-xs uppercase mb-1">Notas de Apertura</p>
                                                             <p className="text-sm text-foreground whitespace-pre-wrap">{project.comentarios_apertura || 'Sin instrucciones de apertura.'}</p>
+                                                        </div>
+                                                        <div className="space-y-4 bg-muted/20 p-4 rounded-xl border border-border">
+                                                            <div>
+                                                                <p className="font-bold text-primary text-xs uppercase mb-1">Límite Interno</p>
+                                                                <p className="text-sm text-foreground whitespace-pre-wrap">
+                                                                    {project.fecha_entrega_interna ? new Date(project.fecha_entrega_interna).toLocaleDateString('es-MX') : 'N/A'}
+                                                                </p>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/50">
+                                                                <div>
+                                                                    <p className="font-bold text-primary text-xs uppercase mb-1">Días Meta</p>
+                                                                    <p cclassName="text-sm text-foreground whitespace-pre-wrap">{project.dias_asignados_tecnico || 0} hábiles</p>
+                                                                </div>
+                                                                <div>
+                                                                    <p className="font-bold text-primary text-xs uppercase mb-1">Trabajados</p>
+                                                                    <p className="text-sm text-foreground whitespace-pre-wrap">{project.dias_reales_trabajados || 0} hábiles</p>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     
@@ -292,7 +310,7 @@ export const ProjectsTable = ({ projects, userRole, supervisorView, onManageClic
                                                             /* VISTA SUPERVISOR: Instrucciones y Operación */
                                                             <>
                                                                 <div className="bg-muted/30 p-4 rounded-lg border border-border">
-                                                                    <p className="font-bold text-primary text-xs uppercase mb-1">Tus Instrucciones (Supervisor)</p>
+                                                                    <p className="font-bold text-primary text-xs uppercase mb-1">Tus Instrucciones</p>
                                                                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">{project.notas_supervisor || 'No has dejado instrucciones.'}</p>
                                                                 </div>
                                                                 <div>
