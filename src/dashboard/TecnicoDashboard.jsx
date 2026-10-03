@@ -13,6 +13,7 @@ import { ClientDossierPanel } from '../components/tecnico/ClientDossierPanel';
 import { AgendaTecnicoPanel } from '../components/tecnico/AgendaTecnicoPanel';
 import PauseProjectModal from '../components/tecnico/PauseProjectModal';
 import { ModalFinalizarTarea } from '../components/tecnico/ModalFinalizarTarea';
+import GenerateNotaModal from '@/components/tecnico/GenerateNotaModal';
 
 
 const TecnicoDashboard = () => {
@@ -311,10 +312,11 @@ const TecnicoDashboard = () => {
                                     </div>
                                 </div>
 
-                                {/* CONTROLES DE TIEMPO */}
+                                {/* CONTROLES DE TIEMPO Y EJECUCIÓN (UNIFICADOS) */}
                                 <div className="bg-muted/30 p-4 rounded-xl border border-border space-y-3">
                                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Controles de Ejecución</p>
                                     
+                                    {/* 1. ESTADOS PARA INICIAR (Pendiente o Pausado) */}
                                     {(activeProject.estado_operativo === 'Pendiente' || activeProject.estado_operativo === 'Pendiente Fase 2' || activeProject.estado_operativo === 'Pausado') && (
                                         <button 
                                             onClick={() => handleStartWork(activeProject.id)} 
@@ -325,8 +327,21 @@ const TecnicoDashboard = () => {
                                         </button>
                                     )}
 
+                                    {/* 2. ESTADO APROBADO (Prioridad máxima de cierre) */}
+                                    {activeProject.estado_operativo === 'Aprobado' && (
+                                        <button 
+                                            onClick={() => { setModalProject(activeProject); setShowGenerateNota(true); }} 
+                                            disabled={isUpdatingStatus}
+                                            className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                        >
+                                            <FileText className="w-4 h-4 mr-2" /> Generar Nota de Entrega
+                                        </button>
+                                    )}
+
+                                    {/* 3. ESTADO EN PROCESO (Lógica de Proveedores y Finalización) */}
                                     {activeProject.estado_operativo === 'En Proceso' && (
                                         <div className="grid grid-cols-2 gap-2">
+                                            {/* El botón de pausar siempre está disponible si está en proceso */}
                                             <button 
                                                 onClick={() => { setModalProject(activeProject); setModalType('pausar'); }}
                                                 disabled={isUpdatingStatus}
@@ -335,8 +350,9 @@ const TecnicoDashboard = () => {
                                                 <Pause className="w-4 h-4 mr-2" /> Pausar
                                             </button>
                                             
-                                            {/* FLUJO ECOTECH ('01') */}
+                                            {/* Ruteo según el proveedor */}
                                             {activeProject.proveedores?.proveedor_id_numerico === '01' ? (
+                                                /* FLUJO ECOTECH */
                                                 !activeProject.ecotech_solicitud_enviada ? (
                                                     <button 
                                                         onClick={() => setShowEcotechSolicitar(true)}
@@ -353,7 +369,7 @@ const TecnicoDashboard = () => {
                                                     </button>
                                                 )
                                             ) : activeProject.proveedores?.proveedor_id_numerico && activeProject.proveedores.proveedor_id_numerico !== '00' ? (
-                                                /* OTROS PROVEEDORES EXTERNOS */
+                                                /* FLUJO OTROS PROVEEDORES (Soft Finish) */
                                                 <button 
                                                     onClick={() => handleSoftFinish(activeProject.id)} 
                                                     disabled={isUpdatingStatus || activeProject.fecha_fin_tecnico_real}
@@ -362,7 +378,7 @@ const TecnicoDashboard = () => {
                                                     <CheckSquare className="w-4 h-4 mr-2" /> Fin. Parte Técnica
                                                 </button>
                                             ) : (
-                                                /* PROYECTOS INTERNOS ('00' o sin proveedor) */
+                                                /* FLUJO INTERNO / SIN PROVEEDOR (Subir PDF Final) */
                                                 <button 
                                                     onClick={() => setShowFinalizarTarea(true)} 
                                                     disabled={isUpdatingStatus}
@@ -374,24 +390,11 @@ const TecnicoDashboard = () => {
                                         </div>
                                     )}
 
-                                    {/* FLUJO NOTA DE ENTREGA: Si el supervisor ya aprobó el proyecto */}
-                                    {activeProject.estado?.toLowerCase() === 'aprobado_supervisor' && (
-                                        <button 
-                                            onClick={() => setShowGenerateNota(true)}
-                                            className="w-full flex items-center justify-center py-3 px-4 mt-2 border border-transparent rounded-lg shadow-sm text-sm font-bold bg-green-600 text-white hover:bg-green-700"
-                                        >
-                                            <FileText className="w-4 h-4 mr-2" /> Generar Nota y Terminar
-                                        </button>
-                                    )}
-                                    
-                                    {/* Botón flotante extra para Subir Entregable Final (aplica misma regla numérica) */}
-                                    {activeProject.proveedores?.proveedor_id_numerico && activeProject.proveedores.proveedor_id_numerico !== '00' && activeProject.fecha_fin_tecnico_real && activeProject.estado_operativo !== 'Revisión' && (
-                                        <button 
-                                            onClick={() => { setModalProject(activeProject); setModalType('task'); }} 
-                                            className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 mt-2"
-                                        >
-                                            <CheckSquare className="w-4 h-4 mr-2" /> Subir Entregable Final
-                                        </button>
+                                    {/* 4. ESTADOS BLOQUEADOS (Ej. 'Revisión', 'Atrasado', etc. que no sean los de arriba) */}
+                                    {!['Pendiente', 'Pendiente Fase 2', 'Pausado', 'En Proceso', 'Aprobado'].includes(activeProject.estado_operativo) && (
+                                        <div className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-muted text-muted-foreground border border-border">
+                                            Proyecto en {activeProject.estado_operativo}
+                                        </div>
                                     )}
                                 </div>
 
@@ -422,41 +425,22 @@ const TecnicoDashboard = () => {
                                         <FolderOpen className="w-4 h-4 mr-2" /> Ver Expediente del Cliente
                                     </button>
 
-                                    {/* LÓGICA ECOTECH */}
-                                    {activeProject.proveedor_nombre?.toLowerCase().includes('ecotech') ? (
-                                        !activeProject.ecotech_num_proyecto ? (
-                                            <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg space-y-3">
-                                                <p className="text-sm text-orange-800 font-bold">⚠️ Requiere No. Ecotech</p>
-                                                {activeProject.ecotech_solicitud_enviada ? (
-                                                    <p className="text-xs text-orange-600 flex items-center font-bold"><Clock className="w-4 h-4 mr-1"/> Solicitud enviada...</p>
-                                                ) : (
-                                                    <button onClick={() => { setModalProject(activeProject); setModalType('solicitar_ecotech'); }} className="w-full bg-orange-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-orange-700">
-                                                        Generar Solicitud
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                <p className="text-xs font-bold text-green-700 bg-green-50 p-2 rounded border border-green-200">✓ No. Ecotech: {activeProject.ecotech_num_proyecto}</p>
-                                                {activeProject.ecotech_pdf_proyecto && (
-                                                    <a href={activeProject.ecotech_pdf_proyecto} target="_blank" rel="noreferrer" className="w-full flex items-center justify-center py-2 px-4 border border-accent/30 bg-accent/5 text-accent rounded-lg text-sm font-bold hover:bg-accent/10">
-                                                        <FileText className="w-4 h-4 mr-2" /> Cotización Ecotech
-                                                    </a>
-                                                )}
-                                                <button onClick={() => { setModalProject(activeProject); setModalType('log'); }} className="w-full flex items-center justify-center py-2.5 px-4 border border-border rounded-lg text-sm font-bold bg-background hover:bg-muted">
-                                                    <FileText className="w-4 h-4 mr-2" /> Bitácora
-                                                </button>
-                                                <button onClick={() => { setModalProject(activeProject); setModalType('finalizar_ecotech'); }} className="w-full flex items-center justify-center py-2.5 px-4 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">
-                                                    <UploadCloud className="w-4 h-4 mr-2" /> Enviar Hojas a Ecotech
-                                                </button>
-                                            </div>
-                                        )
-                                    ) : (
-                                        /* PROYECTO NORMAL */
-                                        <button onClick={() => { setModalProject(activeProject); setModalType('log'); }} className="w-full flex items-center justify-center py-2.5 px-4 border border-border rounded-lg text-sm font-bold bg-background hover:bg-muted">
-                                            <FileText className="w-4 h-4 mr-2" /> Abrir Bitácora
-                                        </button>
+                                    {/* Ecotech: Mostrar el número de folio y PDF si ya existen, sin duplicar botones de acción */}
+                                    {activeProject.proveedores?.proveedor_id_numerico === '01' && activeProject.ecotech_num_proyecto && (
+                                        <div className="space-y-3 bg-green-50 p-3 rounded-lg border border-green-200">
+                                            <p className="text-xs font-bold text-green-700">✓ No. Ecotech: {activeProject.ecotech_num_proyecto}</p>
+                                            {activeProject.ecotech_pdf_proyecto && (
+                                                <a href={activeProject.ecotech_pdf_proyecto} target="_blank" rel="noreferrer" className="w-full flex items-center justify-center py-2 px-4 border border-accent/30 bg-accent/5 text-accent rounded-lg text-sm font-bold hover:bg-accent/10">
+                                                    <FileText className="w-4 h-4 mr-2" /> Cotización Ecotech
+                                                </a>
+                                            )}
+                                        </div>
                                     )}
+
+                                    {/* Botón de Bitácora para todos */}
+                                    <button onClick={() => { setModalProject(activeProject); setModalType('log'); }} className="w-full flex items-center justify-center py-2.5 px-4 border border-border rounded-lg text-sm font-bold bg-background hover:bg-muted">
+                                        <FileText className="w-4 h-4 mr-2" /> Abrir Bitácora
+                                    </button>
                                 </div>
                             </div>
                         ) : (
@@ -507,19 +491,8 @@ const TecnicoDashboard = () => {
                 />
             )}
 
-            {showGenerateNota && activeProject && (
-                <GenerateNotaModal 
-                    project={activeProject}
-                    currentUser={currentUser} 
-                    onClose={() => setShowGenerateNota(false)} 
-                    onFinalized={() => {
-                        setShowGenerateNota(false);
-                        fetchProjects(currentUser.id);
-                        setActiveProject(null);
-                    }} 
-                />
-            )}
 
+            {/* Modal para Subir PDF y enviar a revisión (Proyectos Internos) */}
             {showFinalizarTarea && activeProject && (
                 <ModalFinalizarTarea 
                     project={activeProject} 
@@ -528,6 +501,19 @@ const TecnicoDashboard = () => {
                     onFinalized={() => {
                         setShowFinalizarTarea(false);
                         fetchProjects(currentUser.id);
+                    }} 
+                />
+            )}
+
+            {/* Modal para Generar Nota de Entrega y Subir .rar (Proyectos Aprobados) */}
+            {showGenerateNota && modalProject && (
+                <GenerateNotaModal 
+                    project={modalProject} 
+                    currentUser={currentUser}
+                    onClose={() => setShowGenerateNota(false)} 
+                    onFinalized={() => {
+                        setShowGenerateNota(false);
+                        fetchProjects(currentUser.id); // Refresca los proyectos para que desaparezca el terminado
                     }} 
                 />
             )}
