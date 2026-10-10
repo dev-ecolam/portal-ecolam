@@ -1,8 +1,15 @@
-UPDATE proyectos_v2
-SET 
-    estado = 'activo',
-    estado_operativo = 'En Proceso',
-    url_estudio_r2 = NULL,
-    fecha_fin_tecnico_real = NULL,
-    notas_supervisor = 'Reiniciado para prueba de flujo'
-WHERE npu = '001-0001-00-00526'; -- Reemplaza con tu NPU
+CREATE OR REPLACE FUNCTION incrementar_contador_notas(anio_actual integer)
+RETURNS integer AS $$
+DECLARE
+    nuevo_consecutivo integer;
+BEGIN
+    -- Intenta insertar el año en 1. Si el año ya existe, simplemente le suma 1 al valor que tenga.
+    INSERT INTO public.contadores_notas (anio, consecutivo)
+    VALUES (anio_actual, 1)
+    ON CONFLICT (anio) 
+    DO UPDATE SET consecutivo = contadores_notas.consecutivo + 1
+    RETURNING consecutivo INTO nuevo_consecutivo;
+    
+    RETURN nuevo_consecutivo;
+END;
+$$ LANGUAGE plpgsql;

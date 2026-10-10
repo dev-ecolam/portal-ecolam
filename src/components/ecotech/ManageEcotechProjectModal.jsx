@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../supabase/client';
+import { supabase } from '../../../supabase/client';
 import { toast } from 'sonner';
 import { CheckCircle2, FileText, Send } from 'lucide-react';
 

@@ -71,14 +71,13 @@ const GenerateNotaModal = ({ project, currentUser, onClose, onFinalized }) => {
 
             // 2. OBTENER CONSECUTIVO DE LA NOTA
             const anioActual = new Date().getFullYear();
-            let { data: contadorData, error: countError } = await supabase.from('contadores_notas').select('*').eq('anio', anioActual).single();
-            let consecutivoActual = 1;
             
-            if (countError && countError.code === 'PGRST116') {
-                await supabase.from('contadores_notas').insert([{ anio: anioActual, consecutivo: 1 }]);
-            } else if (contadorData) {
-                consecutivoActual = contadorData.consecutivo + 1;
-                await supabase.from('contadores_notas').update({ consecutivo: consecutivoActual }).eq('anio', anioActual);
+            const { data: consecutivoActual, error: countError } = await supabase
+                .rpc('incrementar_contador_notas', { anio_actual: anioActual });
+
+            if (countError) {
+                console.error("Error al generar folio:", countError);
+                throw new Error("Fallo al generar el número consecutivo de la nota.");
             }
             
             const numeroNota = `${anioActual}-${consecutivoActual.toString().padStart(4, '0')}`;
