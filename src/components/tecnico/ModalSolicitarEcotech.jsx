@@ -7,14 +7,15 @@ export const ModalSolicitarEcotech = ({ project, onClose, onFinalized }) => {
     const [puntosDia, setPuntosDia] = useState('');
     const [loading, setLoading] = useState(false);
 
-    const handleSolicitar = async () => {
+   const handleSolicitar = async () => {
         if (!fechasVisita.trim() || !puntosDia.trim()) {
             return toast.error("Por favor, llena las fechas y los puntos por día.");
         }
         setLoading(true);
 
         try {
-            const { error } = await supabase
+            // 1. Actualizar el proyecto principal
+            const { error: projError } = await supabase
                 .from('proyectos_v2')
                 .update({
                     ecotech_solicitud_enviada: true,
@@ -22,9 +23,24 @@ export const ModalSolicitarEcotech = ({ project, onClose, onFinalized }) => {
                     ecotech_puntos_dia: puntosDia
                 })
                 .eq('id', project.id);
+            if (projError) throw projError;
 
-            if (error) throw error;
+            // 2. Iniciar la logística de Ecotech (Dispara el cronómetro inicial)
+            const { error: logError } = await supabase.from('logistica_ecotech').upsert({
+                proyecto_id: project.id,
+                estatus: 'Pendiente de Solicitud',
+                fecha_solicitud: new Date().toISOString(),
+                actualizado_en: new Date().toISOString()
+            }, { onConflict: 'proyecto_id' });
+            if (logError) throw logError;
             
+            // 3. Dejar huella en la bitácora
+            await supabase.from('bitacoras_proyectos').insert([{
+                proyecto_id: project.id,
+                autor_id: currentUser?.id,
+                mensaje: `📝 Solicitud de Folio Ecotech enviada.\nFechas: ${fechasVisita}\nPuntos: ${puntosDia}`
+            }]);
+
             toast.success("Solicitud enviada a Ecotech exitosamente.");
             onFinalized();
             onClose();

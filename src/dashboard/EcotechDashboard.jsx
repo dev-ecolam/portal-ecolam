@@ -16,9 +16,16 @@ const EcotechDashboard = () => {
         try {
             const { data, error } = await supabase
                 .from('proyectos_v2')
-                .select('*, clientes(nombre_empresa), servicios(nombre_servicio)')
-                .ilike('proveedor_nombre', '%Ecotech%')
-                .or('ecotech_estatus.neq.Terminado,ecotech_estatus.is.null')
+                .select(`
+                    *, 
+                    plantas(nombre_planta, nombre_comercial), 
+                    servicios(nombre_servicio),
+                    proveedores!inner(nombre_proveedor, proveedor_id_numerico),
+                    logistica_ecotech(*)
+                `)
+                .ilike('proveedores.nombre_proveedor', '%Ecotech%')
+                // Filtramos si no existe registro en logística, o si existe pero no está Terminado
+                .or('ecotech_num_proyecto.not.is.null,ecotech_solicitud_enviada.eq.true') 
                 .order('fecha_apertura', { ascending: false });
 
             if (error) throw error;
