@@ -14,6 +14,7 @@ import { AgendaTecnicoPanel } from '../components/tecnico/AgendaTecnicoPanel';
 import PauseProjectModal from '../components/tecnico/PauseProjectModal';
 import { ModalFinalizarTarea } from '../components/tecnico/ModalFinalizarTarea';
 import GenerateNotaModal from '@/components/tecnico/GenerateNotaModal';
+import { ModalFinalizarEcotech } from '@/components/tecnico/ModalFinalizarEcotech';
 
 
 const TecnicoDashboard = () => {
@@ -360,25 +361,45 @@ const TecnicoDashboard = () => {
                                                     >
                                                         Solicitar Folio Ecotech
                                                     </button>
-                                                ) : (
+                                                ) : !activeProject.ecotech_hojas_campo_url ? (
                                                     <button 
                                                         onClick={() => setShowEcotechFinalizar(true)}
                                                         className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700"
                                                     >
-                                                        Subir Campo (Ecotech)
+                                                        Subir Hojas de Campo
+                                                    </button>
+                                                ) : (
+                                                    // Si ya mandó las hojas y volvió a "Iniciar", le damos paso libre para terminar el estudio
+                                                    <button 
+                                                        onClick={() => setShowFinalizarTarea(true)} 
+                                                        disabled={isUpdatingStatus}
+                                                        className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                                    >
+                                                        <CheckSquare className="w-4 h-4 mr-2" /> Finalizar Tarea
                                                     </button>
                                                 )
                                             ) : activeProject.proveedores?.proveedor_id_numerico && activeProject.proveedores.proveedor_id_numerico !== '00' ? (
                                                 /* FLUJO OTROS PROVEEDORES (Soft Finish) */
-                                                <button 
-                                                    onClick={() => handleSoftFinish(activeProject.id)} 
-                                                    disabled={isUpdatingStatus || activeProject.fecha_fin_tecnico_real}
-                                                    className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                                                >
-                                                    <CheckSquare className="w-4 h-4 mr-2" /> Fin. Parte Técnica
-                                                </button>
+                                                !activeProject.fecha_fin_tecnico_real ? (
+                                                    <button 
+                                                        onClick={() => handleSoftFinish(activeProject.id)} 
+                                                        disabled={isUpdatingStatus}
+                                                        className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                                                    >
+                                                        <CheckSquare className="w-4 h-4 mr-2" /> Fin. Parte Técnica
+                                                    </button>
+                                                ) : (
+                                                    // Igual para los demás proveedores, si ya hizo el Fin de Parte Técnica, puede Finalizar la Tarea
+                                                    <button 
+                                                        onClick={() => setShowFinalizarTarea(true)} 
+                                                        disabled={isUpdatingStatus}
+                                                        className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                                    >
+                                                        <CheckSquare className="w-4 h-4 mr-2" /> Finalizar Tarea
+                                                    </button>
+                                                )
                                             ) : (
-                                                /* FLUJO INTERNO / SIN PROVEEDOR (Subir PDF Final) */
+                                                /* FLUJO INTERNO / SIN PROVEEDOR */
                                                 <button 
                                                     onClick={() => setShowFinalizarTarea(true)} 
                                                     disabled={isUpdatingStatus}
@@ -390,7 +411,7 @@ const TecnicoDashboard = () => {
                                         </div>
                                     )}
 
-                                    {/* 4. ESTADOS BLOQUEADOS (Ej. 'Revisión', 'Atrasado', etc. que no sean los de arriba) */}
+                                    {/* 4. ESTADOS BLOQUEADOS */}
                                     {!['Pendiente', 'Pendiente Fase 2', 'Pausado', 'En Proceso', 'Aprobado'].includes(activeProject.estado_operativo) && (
                                         <div className="w-full flex items-center justify-center py-3 px-4 rounded-lg shadow-sm text-sm font-bold bg-muted text-muted-foreground border border-border">
                                             Proyecto en {activeProject.estado_operativo}

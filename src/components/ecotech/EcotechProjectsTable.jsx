@@ -1,15 +1,18 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, ExternalLink } from 'lucide-react';
 import { ManageEcotechProjectModal } from './ManageEcotechProjectModal';
 
-export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
+export const EcotechProjectsTable = ({ projects, activeTab, onUpdateProject }) => {
     const [modalProject, setModalProject] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
-    
-    // Estado para ocultar el punto rojo tras pasar el ratón
     const [viewedAlerts, setViewedAlerts] = useState(new Set());
+
+    // Resetear paginación si cambian de pestaña o buscan algo
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab, searchTerm]);
 
     const getLogistica = (project) => {
         if (!project.logistica_ecotech) return {};
@@ -19,10 +22,7 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
     const getProjectDisplayStatus = (project) => {
         const logistica = getLogistica(project);
         const estatus = logistica.estatus || 'Pendiente de Solicitud';
-        
-        if (estatus === 'Terminado') return { text: 'Terminado', class: 'bg-green-100 text-green-800 border border-green-200' };
         if (project.ecotech_hojas_campo_url && estatus === 'En Proceso') return { text: 'Muestras Recibidas (Dig)', class: 'bg-blue-100 text-blue-800 font-bold' };
-
         return { text: estatus, class: 'bg-muted text-muted-foreground font-medium border border-border' };
     };
 
@@ -33,30 +33,22 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
     };
 
     const getTimeStatus = (project, logistica) => {
-        if (logistica.estatus === 'Terminado') {
-            return { text: 'Logística Cerrada', class: 'bg-green-50 text-green-700 border-green-200' };
-        }
-        
         if (logistica.fecha_envio_fisico) {
             const days = getDaysElapsed(logistica.fecha_envio_fisico);
             return { text: `${days} días desde envío`, class: days > 15 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-purple-50 text-purple-700 border-purple-200' };
         }
-        
         if (logistica.fecha_recepcion_digital) {
             const days = getDaysElapsed(logistica.fecha_recepcion_digital);
             return { text: `${days} días desde exp. digital`, class: days > 5 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200' };
         }
-        
         if (logistica.fecha_asignacion) {
             const days = getDaysElapsed(logistica.fecha_asignacion);
             return { text: `${days} días desde asignación`, class: days > 30 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-muted text-muted-foreground border-border' };
         }
-        
         if (logistica.fecha_solicitud) {
             const days = getDaysElapsed(logistica.fecha_solicitud);
             return { text: `${days} días desde solicitud`, class: days > 2 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-orange-50 text-orange-700 border-orange-200' };
         }
-        
         const openDays = getDaysElapsed(project.fecha_apertura);
         return { text: `${openDays} días activo`, class: 'bg-muted text-muted-foreground border-border' };
     };
@@ -85,17 +77,15 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
 
     const sortedProjects = useMemo(() => {
         return [...filteredProjects].sort((a, b) => {
-            const attentionA = needsAttention(a);
-            const attentionB = needsAttention(b);
-
-            if (attentionA && !attentionB) return -1;
-            if (!attentionA && attentionB) return 1;
-
-            const timeA = new Date(a.fecha_apertura).getTime();
-            const timeB = new Date(b.fecha_apertura).getTime();
-            return timeA - timeB; 
+            if (activeTab === 'pendientes') {
+                const attentionA = needsAttention(a);
+                const attentionB = needsAttention(b);
+                if (attentionA && !attentionB) return -1;
+                if (!attentionA && attentionB) return 1;
+            }
+            return new Date(a.fecha_apertura).getTime() - new Date(b.fecha_apertura).getTime(); 
         });
-    }, [filteredProjects]);
+    }, [filteredProjects, activeTab]);
 
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -104,7 +94,8 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
 
     return (
         <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-border flex flex-col md:flex-row justify-between items-center gap-4 bg-muted/20">
+            
+            <div className="p-4 border-b border-border flex flex-col md:flex-row justify-between items-center gap-4 bg-muted/5">
                 <div className="relative w-full md:w-96">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <input 
@@ -112,14 +103,14 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
                         placeholder="Buscar por NPU o planta..."
                         className="w-full pl-9 pr-4 py-2 border border-border rounded-lg bg-background focus:ring-1 focus:ring-accent outline-none text-sm"
                         value={searchTerm}
-                        onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                        onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
                 <div className="flex items-center">
                     <span className="text-sm font-bold text-muted-foreground mr-2">Mostrar:</span>
                     <select 
                         value={itemsPerPage} 
-                        onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }} 
+                        onChange={(e) => setItemsPerPage(Number(e.target.value))} 
                         className="px-3 py-2 text-sm border border-border rounded-lg bg-background"
                     >
                         <option value={10}>10 filas</option>
@@ -136,18 +127,25 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase whitespace-nowrap">NPU</th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase min-w-[200px]">Cliente y Servicio</th>
                             <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase min-w-[220px]">Info del Proyecto</th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase">Cronómetro</th>
-                            <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase">Estatus</th>
-                            <th className="px-6 py-4 text-right text-xs font-bold text-muted-foreground uppercase">Acciones</th>
+                            
+                            {activeTab === 'pendientes' && (
+                                <>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase">Cronómetro</th>
+                                    <th className="px-6 py-4 text-left text-xs font-bold text-muted-foreground uppercase">Estatus</th>
+                                </>
+                            )}
+                            
+                            <th className="px-6 py-4 text-right text-xs font-bold text-muted-foreground uppercase">
+                                {activeTab === 'pendientes' ? 'Acciones' : 'Ver Digital'}
+                            </th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border bg-card">
-                        {currentItems.map(project => {
+                        {currentItems.length > 0 ? currentItems.map(project => {
                             const displayStatus = getProjectDisplayStatus(project);
                             const logistica = getLogistica(project);
-                            // Verificamos si necesita atención y si NO lo hemos visto aún
-                            const showDot = needsAttention(project) && !viewedAlerts.has(project.id);
-                            const timeStatus = getTimeStatus(project, logistica);
+                            const showDot = activeTab === 'pendientes' && needsAttention(project) && !viewedAlerts.has(project.id);
+                            const timeStatus = activeTab === 'pendientes' ? getTimeStatus(project, logistica) : null;
                             
                             return (
                                 <tr 
@@ -155,21 +153,18 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
                                     className="hover:bg-muted/30 transition-colors"
                                     onMouseEnter={() => handleRowHover(project.id)}
                                 >
-                                    {/* COLUMNA 1: NPU AISLADO */}
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center">
                                             <p className="font-bold text-primary">{project.npu}</p>
-                                            <div className={`w-2.5 h-2.5 bg-red-500 rounded-full ml-2 transition-opacity duration-300 ${showDot ? 'opacity-100 animate-pulse' : 'opacity-0'}`} title="Requiere Acción"></div>
+                                            {showDot && <div className="w-2.5 h-2.5 bg-red-500 rounded-full ml-2 animate-pulse" title="Requiere Acción"></div>}
                                         </div>
                                     </td>
                                     
-                                    {/* COLUMNA 2: CLIENTE Y SERVICIO JUNTOS */}
                                     <td className="px-6 py-4">
                                         <p className="text-sm font-bold text-foreground">{project.plantas?.nombre_comercial || project.plantas?.nombre_planta}</p>
                                         <p className="text-xs text-muted-foreground mt-1">{project.servicios?.nombre_servicio}</p>
                                     </td>
                                     
-                                    {/* COLUMNA 3: DETALLES DEL PROYECTO */}
                                     <td className="px-6 py-4">
                                         {project.ecotech_num_proyecto ? (
                                             <div className="text-sm space-y-1.5">
@@ -203,43 +198,53 @@ export const EcotechProjectsTable = ({ projects, onUpdateProject }) => {
                                         )}
                                     </td>
 
-                                    {/* COLUMNA 4: CRONÓMETRO */}
-                                    <td className="px-6 py-4">
-                                        <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2.5 py-1.5 rounded-md border ${timeStatus.class}`}>
-                                            {timeStatus.text}
-                                        </span>
-                                    </td>
+                                    {activeTab === 'pendientes' && (
+                                        <>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-block whitespace-nowrap text-[11px] font-bold px-2.5 py-1.5 rounded-md border ${timeStatus.class}`}>
+                                                    {timeStatus.text}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-block whitespace-nowrap px-3 py-1 text-xs rounded-full ${displayStatus.class}`}>
+                                                    {displayStatus.text}
+                                                </span>
+                                            </td>
+                                        </>
+                                    )}
                                     
-                                    {/* COLUMNA 5: ESTATUS */}
-                                    <td className="px-6 py-4">
-                                        <span className={`inline-block whitespace-nowrap px-3 py-1 text-xs rounded-full ${displayStatus.class}`}>
-                                            {displayStatus.text}
-                                        </span>
-                                    </td>
-                                    
-                                    {/* COLUMNA 6: ACCIONES */}
-                                    <td className="px-6 py-4 text-right space-y-2">
-                                        <button 
-                                            onClick={() => setModalProject(project)} 
-                                            className="w-full bg-accent/10 text-accent hover:bg-accent hover:text-primary-foreground px-4 py-2 rounded-lg text-sm font-bold transition-colors whitespace-nowrap"
-                                        >
-                                            Gestionar
-                                        </button>
-                                        
-                                        {project.ecotech_hojas_campo_url && (
-                                            <a 
-                                                href={project.ecotech_hojas_campo_url} 
-                                                target="_blank" 
-                                                rel="noreferrer" 
-                                                className="w-full flex items-center justify-center border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-1.5 rounded-lg text-xs font-bold transition-colors mt-2 whitespace-nowrap"
+                                    <td className="px-6 py-4 text-right">
+                                        {activeTab === 'pendientes' ? (
+                                            <button 
+                                                onClick={() => setModalProject(project)} 
+                                                className="w-full bg-accent/10 text-accent hover:bg-accent hover:text-primary-foreground px-4 py-2 rounded-lg text-sm font-bold transition-colors whitespace-nowrap"
                                             >
-                                                <ExternalLink className="w-3 h-3 mr-1" /> Ver Digital
-                                            </a>
+                                                Gestionar
+                                            </button>
+                                        ) : (
+                                            project.ecotech_hojas_campo_url ? (
+                                                <a 
+                                                    href={project.ecotech_hojas_campo_url} 
+                                                    target="_blank" 
+                                                    rel="noreferrer" 
+                                                    className="inline-flex items-center justify-center border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-2 rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
+                                                >
+                                                    <ExternalLink className="w-3 h-3 mr-1" /> Ver Digital
+                                                </a>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">Sin Archivos</span>
+                                            )
                                         )}
                                     </td>
                                 </tr>
                             );
-                        })}
+                        }) : (
+                            <tr>
+                                <td colSpan={activeTab === 'pendientes' ? 6 : 4} className="px-6 py-10 text-center text-muted-foreground">
+                                    No hay proyectos {activeTab} para mostrar.
+                                </td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
